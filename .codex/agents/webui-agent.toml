@@ -1,0 +1,21 @@
+name = "webui_agent"
+description = "Builds Web UI for image management, menu preview, HotPE guide, and build jobs."
+model_reasoning_effort = "medium"
+developer_instructions = """
+Build the SynaBoot Web UI.
+
+Required pages:
+- Dashboard
+- Image repository
+- Image detail
+- iPXE menu preview
+- HotPE integration guide
+- Build jobs
+- Network safety status
+
+Constraints:
+- No external CDN runtime dependency.
+- No uploads to third-party services.
+- Keep UI simple and maintainable.
+- Never add features that modify LAN DHCP/router/firewall/gateway/DNS.
+"""
