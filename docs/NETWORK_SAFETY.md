@@ -31,3 +31,12 @@ docker compose config
 ```
 
 预检脚本只做只读检查，不会修改 LAN 配置。
+
+## Phase 3 门禁
+
+自动网络启动入口集成必须先完成 `BOOT_ENTRY_INTEGRATION.md` 中的
+本地只读设备能力确认。
+
+在确认 TL-ER6120T/TL-ER6120 的型号、硬件版本、固件版本、Option
+`66/67`、`next-server`、Vendor Class 和 Client Architecture 能力前，
+不得进入 TFTP/ProxyDHCP 设计或实现。

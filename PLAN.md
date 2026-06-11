@@ -2035,11 +2035,10 @@ curl http://localhost:18080/api/boot-entry
 
 - 还未本地确认 TP-Link 设备准确型号、硬件版本和固件版本。
 - 还未本地确认 TL-ER6120T/TL-ER6120 是否完整支持 Option 66、Option 67、next-server、Vendor Class 或 Client Architecture 区分。
-- 还未实现 `/api/boot-entry`。
 - `/api/boot-entry` 已实现 Phase 3.1 只读模型，所有启动入口与可选服务默认关闭。
 - 还未实现 TFTP/ProxyDHCP 可选模块。
 - Web UI 已新增“启动入口”只读展示页面。
-- 还未创建 `docs/BOOT_ENTRY_INTEGRATION.md`。
+- `docs/BOOT_ENTRY_INTEGRATION.md` 已创建，只记录只读确认清单、参数边界、回滚原则和验证顺序；不包含路由器实操配置步骤。
 - 已收敛 Nginx `/boot/` 静态服务：只允许访问 `menu.ipxe` 与固定白名单
   loader 文件，其它 `/boot/` 路径返回 404，并启用 `disable_symlinks on`。
 
@@ -2072,10 +2071,11 @@ curl http://localhost:18080/api/boot-entry
    - 由 `boot_entry_agent` 设计 `ipxe.efi`、`snponly.efi`、`undionly.kpxe` 元数据。
    - 只允许 boot loader 位于 `./data/boot/loaders`。
    - 记录来源、校验值、架构、适用场景。
-   - 当前状态：实现中，仅允许只读扫描固定白名单 loader 元数据，不下载、
+   - 当前状态：已完成，仅允许只读扫描固定白名单 loader 元数据，不下载、
      生成、上传、删除或启用 loader。
    - Nginx `/boot/` 已改为精确白名单 location，避免静态服务绕过
      API 的 boot asset 安全判断。
+   - 已提交并推送：`6a288e7 Add readonly Phase 3.2 boot assets inventory`。
    - 验证记录：
      - `python3 -m py_compile apps/api/main.py apps/worker/scan_images.py`
      - `node --check apps/web/assets/app.js`
@@ -2091,6 +2091,9 @@ curl http://localhost:18080/api/boot-entry
 4. Phase 3.3：受控 TFTP/ProxyDHCP 方案设计
    - 仅在 TP-Link DHCP boot option 能力不足时进入。
    - 是否进入该路径由 `project_decision_agent` 基于 `research_agent` 证据和安全审查结论决定。
+   - 当前状态：BLOCKED，等待本地只读确认 TP-Link 准确型号、硬件版本、
+     固件版本、Option 66/67、next-server、Vendor Class 和 Client
+     Architecture 能力。
    - 默认关闭。
    - 不得分配 IP。
    - 不得修改网关、DNS、路由、防火墙。
@@ -2100,12 +2103,20 @@ curl http://localhost:18080/api/boot-entry
    - 展示 HTTP IPv4、PXE IPv4、HTTP IPv6、PXE IPv6 状态。
    - 展示要交给网络管理员的 boot server、bootfile、URL 参数。
    - 明确风险、回滚步骤和验证步骤。
+   - 当前状态：只读入口状态页已实现；后续如新增可操作配置，必须重新审查。
 
 6. Phase 3.5：文档与验证
    - 新增 `docs/BOOT_ENTRY_INTEGRATION.md`。
    - 更新 README/ADMIN_GUIDE/NETWORK_SAFETY。
    - 单台测试机验证 UEFI PXE IPv4。
    - 验证普通终端 DHCP、网关、内网和互联网不受影响。
+   - 当前状态：已创建只读文档草案；真实测试机验证等待 Phase 3.3 门禁解除。
+   - 本轮文档门禁同步验证记录：
+     - `bash scripts/preflight/check-network-safety.sh`
+     - `docker compose config`
+     - `ss -lntu | grep -E ':(67|68|69|4011)\b' || true`
+     - `rg -n "network_mode: host|privileged: true|67:|68:|69:|4011:|dnsmasq|proxydhcp|tftp|dhcp" docker-compose.yml scripts apps config docs PLAN.md README.md`
+     - `git diff --check`
 
 7. Phase 3.6：阶段收口
    - `network_safety_agent` 复审。

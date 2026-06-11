@@ -178,6 +178,9 @@ curl http://localhost:18080/boot/menu.ipxe
 
 ## 6. 客户端启动入口
 
+Phase 3 自动网络启动入口仍处于门禁状态。管理员只读确认清单见
+`BOOT_ENTRY_INTEGRATION.md`。
+
 提供给用户的 iPXE chain 地址：
 
 ```text

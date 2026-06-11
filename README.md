@@ -28,6 +28,9 @@ SynaBoot 不接管现有局域网。
 
 普通网卡 PXE 自动发现不属于零侵入模式。用户需要使用 iPXE 启动介质、手动 UEFI HTTP Boot，或由外部管理员已经配置好的 chain 入口访问 SynaBoot 菜单。
 
+Phase 3 自动网络启动入口仍处于门禁状态。只读确认清单见
+`docs/BOOT_ENTRY_INTEGRATION.md`。
+
 ## 部署
 
 准备 `.env`：
