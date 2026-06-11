@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>SynaBoot</title>
+    <link rel="stylesheet" href="/assets/styles.css" />
+  </head>
+  <body>
+    <aside class="sidebar">
+      <div class="brand">
+        <span class="mark">SB</span>
+        <div>
+          <strong>SynaBoot</strong>
+          <small>HTTP Boot Console</small>
+        </div>
+      </div>
+      <nav>
+        <button class="active" data-view="dashboard">Dashboard</button>
+        <button data-view="images">镜像仓库</button>
+        <button data-view="menu">菜单预览</button>
+        <button data-view="hotpe">HotPE 指南</button>
+        <button data-view="jobs">构建任务</button>
+        <button data-view="safety">网络安全</button>
+      </nav>
+    </aside>
+
+    <main class="shell">
+      <header class="topbar">
+        <div>
+          <h1 id="page-title">Dashboard</h1>
+          <p id="page-subtitle">Phase 1 零侵入 HTTP Boot 控制台</p>
+        </div>
+        <button id="refresh-button" class="primary">刷新</button>
+      </header>
+
+      <section id="dashboard" class="view active">
+        <div class="metrics">
+          <article><span>Web UI</span><strong>http://192.168.1.168:8080/</strong></article>
+          <article><span>iPXE 菜单</span><strong>/boot/menu.ipxe</strong></article>
+          <article><span>镜像仓库</span><strong>/images/</strong></article>
+          <article><span>网络模式</span><strong>仅 8080/tcp</strong></article>
+        </div>
+        <div class="panel">
+          <h2>分类统计</h2>
+          <div id="category-summary" class="summary-grid"></div>
+        </div>
+      </section>
+
+      <section id="images" class="view">
+        <div class="toolbar">
+          <input id="image-search" placeholder="搜索名称或路径" />
+          <select id="category-filter">
+            <option value="">全部分类</option>
+            <option value="pe">PE</option>
+            <option value="windows">Windows</option>
+            <option value="linux">Linux</option>
+            <option value="tools">Tools</option>
+            <option value="custom">Custom</option>
+          </select>
+        </div>
+        <div class="panel">
+          <h2>镜像文件</h2>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>名称</th>
+                  <th>分类</th>
+                  <th>类型</th>
+                  <th>大小</th>
+                  <th>启动方式</th>
+                  <th>路径</th>
+                  <th>菜单</th>
+                </tr>
+              </thead>
+              <tbody id="images-table"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <section id="menu" class="view">
+        <div class="panel split">
+          <div>
+            <h2>启动入口</h2>
+            <p class="mono">chain http://192.168.1.168:8080/boot/menu.ipxe</p>
+            <p>Windows ISO 默认通过 HotPE 访问安装；Ubuntu 需要 ISO、vmlinuz、initrd 同时就绪。</p>
+          </div>
+          <pre id="menu-preview"></pre>
+        </div>
+      </section>
+
+      <section id="hotpe" class="view">
+        <div class="panel prose">
+          <h2>HotPE 集成</h2>
+          <p>请将 HotPE 文件放入 <code>data/images/pe/hotpe/</code>。</p>
+          <pre>wimboot
+bootmgr
+BCD
+boot.sdi
+boot.wim</pre>
+          <p>进入 HotPE 后访问 Windows 镜像仓库：</p>
+          <p class="mono">http://192.168.1.168:8080/images/windows/</p>
+          <p>Samba 默认未启用；启用前必须重新通过网络安全审查。</p>
+        </div>
+      </section>
+
+      <section id="jobs" class="view">
+        <div class="toolbar">
+          <button data-kind="ubuntu-autoinstall" class="primary job-create">创建 Ubuntu 模板任务</button>
+          <button data-kind="windows-adk-package" class="job-create">创建 Windows ADK 包任务</button>
+        </div>
+        <div class="panel">
+          <h2>任务列表</h2>
+          <div id="jobs-list" class="cards"></div>
+        </div>
+      </section>
+
+      <section id="safety" class="view">
+        <div class="panel">
+          <h2>网络安全状态</h2>
+          <div id="safety-status" class="safety-grid"></div>
+        </div>
+      </section>
+    </main>
+    <script src="/assets/app.js"></script>
+  </body>
+</html>

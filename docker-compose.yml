@@ -1,0 +1,39 @@
+services:
+  synaboot-api:
+    build:
+      context: ./apps/api
+    environment:
+      SERVER_IP: ${SERVER_IP:-192.168.1.168}
+      SYNABOOT_DATA_DIR: /srv/synaboot/data
+      SYNABOOT_PORT: ${SYNABOOT_HTTP_PORT:-8080}
+      SYNABOOT_ADMIN_TOKEN: ${SYNABOOT_ADMIN_TOKEN:-}
+    volumes:
+      - ./data:/srv/synaboot/data
+    expose:
+      - "8000"
+    restart: unless-stopped
+
+  synaboot-nginx:
+    image: nginx:1.27-alpine
+    depends_on:
+      - synaboot-api
+    ports:
+      - "${SYNABOOT_HTTP_BIND:-8080}:8080/tcp"
+    volumes:
+      - ./config/nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./apps/web:/usr/share/nginx/html:ro
+      - ./data/images:/srv/synaboot/data/images:ro
+      - ./data/boot:/srv/synaboot/data/boot:ro
+    restart: unless-stopped
+
+  synaboot-worker:
+    build:
+      context: ./apps/worker
+    depends_on:
+      - synaboot-api
+    environment:
+      SYNABOOT_API_URL: http://synaboot-api:8000/api/images
+      SYNABOOT_SCAN_URL: http://synaboot-api:8000/api/scan
+      SYNABOOT_ADMIN_TOKEN: ${SYNABOOT_ADMIN_TOKEN:-}
+      SCAN_INTERVAL_SECONDS: "300"
+    restart: unless-stopped
