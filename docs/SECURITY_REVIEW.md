@@ -102,3 +102,48 @@ bash -n scripts/preflight/check-network-safety.sh scripts/generate-ipxe-menu.sh 
 - 当前宿主机已有服务监听 `8080/tcp`，且返回内容不是 SynaBoot。
 - 未停止或修改该未知服务。
 - 默认端口已迁移到 `18080/tcp`，正式部署前需要管理员确认该端口未被占用，再执行 `docker compose up -d`。
+
+## Phase 3 只读启动入口审查
+
+当前状态：只读模型审查通过，Phase 3.3 继续保持 `BLOCKED`。
+
+审查范围：
+
+- `/api/boot-entry` 只读启动入口状态模型。
+- `/api/boot-assets` 固定白名单 boot loader 元数据清单。
+- Web UI “启动入口”只读展示页。
+- Nginx `/boot/` 静态服务白名单。
+- `BOOT_ENTRY_RESEARCH.md`、`BOOT_ENTRY_INTEGRATION.md`、
+  `BOOT_ENTRY_LOCAL_VERIFICATION.md`。
+
+审查结论：
+
+- 未启用 DHCP Server。
+- 未启用 ProxyDHCP。
+- 未启用 TFTP。
+- 未开放 UDP `67/68/69/4011`。
+- 未修改 TP-Link、OpenWrt、交换机、AP、VLAN、DNS、路由、防火墙或网关。
+- `/api/boot-entry` 只返回只读状态、文档入口、待确认项和安全门禁。
+- `/api/boot-assets` 只扫描固定白名单 loader 文件名，不下载、生成、替换、删除或执行 loader。
+- Boot loader 文件和父目录 symlink 不会被标记为可用。
+- Nginx `/boot/` 仅允许精确访问 `menu.ipxe` 和固定白名单 loader，其它路径返回 404，并启用 `disable_symlinks on`。
+- Web UI 仅展示门禁状态、文档路径和 loader 元数据，没有配置提交按钮或网络操作按钮。
+- Phase 3.3 等待本地只读确认 TP-Link 准确型号、硬件版本、固件版本、Option `66/67`、`next-server`、Vendor Class 和 Client Architecture 能力。
+
+验证命令：
+
+```bash
+python3 -m py_compile apps/api/main.py apps/worker/scan_images.py
+node --check apps/web/assets/app.js
+bash scripts/preflight/check-network-safety.sh
+docker compose config
+ss -lntu | grep -E ':(67|68|69|4011)\b' || true
+rg -n "network_mode: host|privileged: true|67:|68:|69:|4011:|dnsmasq|proxydhcp|tftp|dhcp" docker-compose.yml scripts apps config docs PLAN.md README.md
+git diff --check
+```
+
+后续门禁：
+
+- 未完成 `BOOT_ENTRY_LOCAL_VERIFICATION.md` 本地只读确认前，不得进入 Phase 3.3 实施设计。
+- 任何 DHCP boot option、ProxyDHCP、TFTP、UDP `67/68/69/4011`、端口、Compose、路由器或网关相关变更，必须重新经过 `research_agent`、`network_safety_agent`、`security_audit_agent` 和 `project_decision_agent` 审查。
+- 本记录不批准生产 LAN 自动网络启动集成。
