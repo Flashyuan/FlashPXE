@@ -19,6 +19,7 @@
         <button class="active" data-view="dashboard">Dashboard</button>
         <button data-view="images">镜像仓库</button>
         <button data-view="menu">菜单预览</button>
+        <button data-view="boot-entry">启动入口</button>
         <button data-view="hotpe">HotPE 指南</button>
         <button data-view="jobs">构建任务</button>
         <button data-view="safety">网络安全</button>
@@ -112,6 +113,25 @@ boot.wim</pre>
           <p>进入 HotPE 后访问 Windows 镜像仓库：</p>
           <p class="mono" id="windows-images-url">-</p>
           <p>Samba 默认未启用；启用前必须重新通过网络安全审查。</p>
+        </div>
+      </section>
+
+      <section id="boot-entry" class="view">
+        <div class="panel">
+          <h2>启动入口状态</h2>
+          <div id="boot-entry-summary" class="safety-grid"></div>
+        </div>
+        <div class="panel">
+          <h2>固件入口</h2>
+          <div id="boot-entry-list" class="cards"></div>
+        </div>
+        <div class="panel">
+          <h2>Boot Loaders</h2>
+          <div id="boot-loader-list" class="cards"></div>
+        </div>
+        <div class="panel">
+          <h2>待确认项</h2>
+          <div id="boot-entry-verification" class="cards"></div>
         </div>
       </section>
 

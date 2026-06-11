@@ -73,6 +73,7 @@ nav button {
   background: transparent;
   text-align: left;
   cursor: pointer;
+  overflow-wrap: anywhere;
 }
 
 nav button.active,

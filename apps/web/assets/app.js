@@ -3,6 +3,7 @@ const titles = {
   images: ["镜像仓库", "从 data/images 扫描得到的本地镜像元数据"],
   menu: ["菜单预览", "当前生成的 iPXE HTTP Boot 菜单"],
   hotpe: ["HotPE 指南", "通过 HotPE 访问 Windows 镜像仓库"],
+  "boot-entry": ["启动入口", "Phase 3.1 只读启动入口模型"],
   jobs: ["构建任务", "只生成模板与任务目录，不执行破坏性操作"],
   safety: ["网络安全", "已批准范围：仅 HTTP 18080/tcp"],
 };
@@ -10,6 +11,7 @@ const titles = {
 let images = [];
 let jobs = [];
 let safety = {};
+let bootEntry = {};
 
 async function fetchJson(url) {
   const response = await fetch(url, { cache: "no-store" });
@@ -18,21 +20,24 @@ async function fetchJson(url) {
 }
 
 async function refresh() {
-  const [imageData, jobData, safetyData, menuText] = await Promise.all([
+  const [imageData, jobData, safetyData, bootEntryData, menuText] = await Promise.all([
     fetchJson("/api/images"),
     fetchJson("/api/jobs"),
     fetchJson("/api/network-safety"),
+    fetchJson("/api/boot-entry"),
     fetch("/api/menu", { cache: "no-store" }).then((response) => response.text()),
   ]);
   images = imageData.images || [];
   jobs = jobData.jobs || [];
   safety = safetyData || {};
+  bootEntry = bootEntryData || {};
   document.querySelector("#menu-preview").textContent = menuText;
   applyAdminState();
   renderDashboard();
   renderRuntimeUrls();
   renderImages();
   renderJobs();
+  renderBootEntry();
   renderSafety();
 }
 
@@ -266,6 +271,43 @@ async function renderJobDetail(jobId) {
     <h3>事件日志</h3>
     <pre>${escapeHtml(events.map((event) => JSON.stringify(event)).join("\n") || "暂无事件。")}</pre>
   `;
+}
+
+function renderBootEntry() {
+  const summary = [
+    ["阶段", bootEntry.phase || ""],
+    ["模式", bootEntry.mode || ""],
+    ["状态", bootEntry.status || ""],
+    ["启用", bootEntry.enabled ? "是" : "否"],
+    ["菜单 URL", bootEntry.server?.menu_url || ""],
+    ["HTTP Loader", bootEntry.server?.http_boot_loader_url || ""],
+  ];
+  document.querySelector("#boot-entry-summary").innerHTML = summary
+    .map(([label, value]) => `<article><span>${escapeHtml(label)}</span><strong>${escapeHtml(String(value))}</strong></article>`)
+    .join("");
+  document.querySelector("#boot-entry-list").innerHTML = (bootEntry.entries || [])
+    .map(
+      (entry) => `<article>
+        <h3>${escapeHtml(entry.label)}</h3>
+        <p><span class="badge ${statusClass(entry.status)}">${escapeHtml(entry.status)}</span> <span class="badge">${entry.enabled ? "启用" : "关闭"}</span></p>
+        <p class="mono">${escapeHtml(entry.target || entry.bootfile || "")}</p>
+        <p>${escapeHtml((entry.blocked_by || []).join("；"))}</p>
+      </article>`,
+    )
+    .join("");
+  document.querySelector("#boot-loader-list").innerHTML = (bootEntry.loaders || [])
+    .map(
+      (loader) => `<article>
+        <h3>${escapeHtml(loader.filename)}</h3>
+        <p><span class="badge ${loader.present ? "ok" : "warn"}">${loader.present ? "present" : "missing"}</span> <span class="badge">${escapeHtml(loader.architecture)}</span></p>
+        <p>${escapeHtml(loader.purpose)}</p>
+        <p class="mono">${escapeHtml(loader.url)}</p>
+      </article>`,
+    )
+    .join("");
+  document.querySelector("#boot-entry-verification").innerHTML = (bootEntry.local_verification_required || [])
+    .map((item) => `<article><p>${escapeHtml(item)}</p></article>`)
+    .join("");
 }
 
 function renderSafety() {

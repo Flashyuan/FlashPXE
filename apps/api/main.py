@@ -857,6 +857,197 @@ def network_safety_status() -> dict:
     }
 
 
+def loader_status(filename: str, purpose: str, architecture: str, transport: str) -> dict:
+    rel_path = f"loaders/{filename}"
+    path = BOOT_DIR / rel_path
+    return {
+        "filename": filename,
+        "purpose": purpose,
+        "architecture": architecture,
+        "transport": transport,
+        "present": path.is_file() and not path.is_symlink(),
+        "url": f"http://{SERVER_IP}:{SYNABOOT_PORT}/boot/{rel_path}",
+        "path": f"data/boot/{rel_path}",
+    }
+
+
+def boot_entry_status() -> dict:
+    menu_url = f"http://{SERVER_IP}:{SYNABOOT_PORT}/boot/menu.ipxe"
+    loaders = [
+        loader_status("ipxe.efi", "UEFI HTTP Boot / UEFI PXE chainload", "uefi-x64", "http-or-tftp"),
+        loader_status("snponly.efi", "UEFI PXE chainload using SNP driver", "uefi-x64", "tftp"),
+        loader_status("undionly.kpxe", "Legacy BIOS PXE chainload", "bios", "tftp"),
+        loader_status("ipxe.iso", "Manual iPXE ISO boot media", "bios-or-uefi", "removable-media"),
+    ]
+    return {
+        "schema_version": "boot-entry.v1",
+        "phase": "3.1",
+        "mode": "readonly_display_only",
+        "status": "READONLY_MODEL_ONLY",
+        "enabled": False,
+        "default_enabled": False,
+        "operation_allowed": False,
+        "local_confirmed": False,
+        "summary": "Phase 3 boot entry integration is modeled only. No DHCP, ProxyDHCP, or TFTP service is enabled.",
+        "server": {
+            "server_ip": SERVER_IP,
+            "http_port": SYNABOOT_PORT,
+            "base_url": f"http://{SERVER_IP}:{SYNABOOT_PORT}",
+            "menu_url": menu_url,
+            "http_boot_loader_url": f"http://{SERVER_IP}:{SYNABOOT_PORT}/boot/loaders/ipxe.efi",
+        },
+        "lan_contract": {
+            "dhcp_lease_server": "TP-Link TL-ER6120T 192.168.1.1",
+            "default_gateway": "192.168.1.4",
+            "synaboot_assigns_dhcp_leases": False,
+            "compose_network_change_allowed": False,
+            "router_change_performed_by_api": False,
+        },
+        "recommended_urls": {
+            "web": f"http://{SERVER_IP}:{SYNABOOT_PORT}/",
+            "ipxe_menu": menu_url,
+            "http_ipv4_loader": f"http://{SERVER_IP}:{SYNABOOT_PORT}/boot/loaders/ipxe.efi",
+            "pxe_uefi_loader": "ipxe.efi",
+            "pxe_chain_menu": f"chain {menu_url}",
+            "images": f"http://{SERVER_IP}:{SYNABOOT_PORT}/images/",
+        },
+        "entries": [
+            {
+                "id": "uefi-http-ipv4",
+                "label": "UEFI HTTP IPv4",
+                "enabled": False,
+                "status": "needs_local_verification",
+                "requires_manual_external_change": True,
+                "target": f"http://{SERVER_IP}:{SYNABOOT_PORT}/boot/loaders/ipxe.efi",
+                "chain": [f"HTTP loader URL", f"iPXE chain {menu_url}"],
+                "blocked_by": ["TL-ER6120T HTTPClient vendor-class support is not locally verified", "Secure Boot compatibility is not verified"],
+            },
+            {
+                "id": "uefi-pxe-ipv4",
+                "label": "UEFI PXE IPv4",
+                "enabled": False,
+                "status": "needs_local_verification",
+                "requires_manual_external_change": True,
+                "next_server": SERVER_IP,
+                "bootfile": "snponly.efi or ipxe.efi",
+                "chain": ["PXE boot metadata", f"iPXE chain {menu_url}"],
+                "blocked_by": ["Option 67 / bootfile support is not locally verified", "Client Architecture / Option 93 matching is not verified"],
+            },
+            {
+                "id": "uefi-http-ipv6",
+                "label": "UEFI HTTP IPv6",
+                "enabled": False,
+                "status": "blocked",
+                "requires_manual_external_change": True,
+                "target": "requires verified LAN IPv6 RA/DHCPv6 and HTTP Boot URL",
+                "chain": ["IPv6 HTTP boot metadata", "iPXE menu chain"],
+                "blocked_by": ["LAN IPv6 RA/DHCPv6 boot support is not verified", "SynaBoot does not modify OpenWrt IPv6 configuration"],
+            },
+            {
+                "id": "uefi-pxe-ipv6",
+                "label": "UEFI PXE IPv6",
+                "enabled": False,
+                "status": "blocked",
+                "requires_manual_external_change": True,
+                "target": "requires verified DHCPv6/PXE boot metadata",
+                "chain": ["IPv6 PXE metadata", "iPXE menu chain"],
+                "blocked_by": ["DHCPv6 PXE support is not verified", "SynaBoot does not modify router RA/DHCPv6/firewall settings"],
+            },
+        ],
+        "optional_services": [
+            {
+                "id": "proxydhcp",
+                "label": "ProxyDHCP metadata only",
+                "enabled": False,
+                "status": "blocked",
+                "requires_manual_external_change": True,
+                "ports": ["udp/67", "udp/4011"],
+                "guardrails": ["must not assign IP leases", "must not set gateway or DNS", "must pass network_safety_agent and security_audit_agent"],
+            },
+            {
+                "id": "tftp",
+                "label": "TFTP boot loader serving",
+                "enabled": False,
+                "status": "blocked",
+                "requires_manual_external_change": True,
+                "ports": ["udp/69"],
+                "root": "data/boot/loaders",
+                "guardrails": ["serve boot loaders only", "must remain disabled by default", "must pass network_safety_agent and security_audit_agent"],
+            },
+        ],
+        "services": {
+            "proxy_dhcp": {
+                "enabled": False,
+                "available_in_phase": False,
+                "mode": "metadata_only_when_future_approved",
+                "would_assign_ip_leases": False,
+                "udp_ports": [67, 4011],
+                "activation_gate": "network_safety_agent + security_audit_agent + project_decision_agent",
+            },
+            "tftp": {
+                "enabled": False,
+                "available_in_phase": False,
+                "root": "./data/boot/loaders",
+                "allowed_files_scope": "boot loaders only",
+                "udp_ports": [69],
+                "activation_gate": "network_safety_agent + security_audit_agent + project_decision_agent",
+            },
+        },
+        "loaders": loaders,
+        "safety": {
+            "dhcp_server_enabled": False,
+            "proxydhcp_enabled": False,
+            "tftp_enabled": False,
+            "assigns_dhcp_leases": False,
+            "changes_gateway": False,
+            "gateway_expected": "192.168.1.4",
+            "existing_dhcp_server_expected": "192.168.1.1",
+            "blocked_actions": [
+                "Do not enable DHCP.",
+                "Do not enable ProxyDHCP.",
+                "Do not enable TFTP.",
+                "Do not modify gateway, DNS, routes, firewall, VLAN, switch, or AP configuration.",
+                "Do not generate directly executable router configuration steps before local verification.",
+            ],
+        },
+        "local_verification_required": [
+            "Confirm exact TP-Link model, hardware version, and firmware version.",
+            "Confirm whether DHCP Option 66 and Option 67 are available.",
+            "Confirm whether next-server / boot server is available.",
+            "Confirm whether Vendor Class Option 60 can distinguish PXEClient and HTTPClient.",
+            "Confirm whether Client Architecture Option 93 can distinguish BIOS and UEFI clients.",
+            "Validate DHCP offers in an isolated test VLAN or single-client lab before production use.",
+        ],
+        "safety_gates": [
+            "TP-Link 192.168.1.1 remains the only normal DHCP lease server.",
+            "Default gateway remains OpenWrt 192.168.1.4.",
+            "No Docker host network or privileged container is enabled.",
+            "No UDP 67/68/69/4011 listener is enabled by Phase 3.1.",
+            "Any Phase 3.3 ProxyDHCP/TFTP design requires network_safety_agent and security_audit_agent approval.",
+        ],
+        "safety_gates_detail": {
+            "phase3_1_allowed": ["GET /api/boot-entry", "readonly recommended URLs", "verification gaps and gate status"],
+            "phase3_1_forbidden": [
+                "enable DHCP service",
+                "enable ProxyDHCP",
+                "enable TFTP",
+                "modify docker-compose.yml",
+                "publish UDP 67/69/4011",
+                "modify TP-Link router configuration",
+                "modify OpenWrt gateway, route, NAT, firewall, DNS, VLAN, switch, or AP configuration",
+                "change default gateway 192.168.1.4",
+                "assign normal DHCP leases from SynaBoot",
+            ],
+            "future_activation_required_approvals": [
+                "research_agent fact confirmation",
+                "network_safety_agent APPROVED",
+                "security_audit_agent APPROVED",
+                "project_decision_agent authorization",
+            ],
+        },
+    }
+
+
 class Handler(BaseHTTPRequestHandler):
     def require_admin(self) -> bool:
         client = self.client_address[0]
@@ -908,6 +1099,8 @@ class Handler(BaseHTTPRequestHandler):
                 json_response(self, 200, job)
         elif path in {"/api/network-safety", "/api/safety"}:
             json_response(self, 200, network_safety_status())
+        elif path == "/api/boot-entry":
+            json_response(self, 200, boot_entry_status())
         else:
             json_response(self, 404, {"error": "not_found"})
 

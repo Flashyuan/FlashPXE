@@ -2036,9 +2036,12 @@ curl http://localhost:18080/api/boot-entry
 - 还未本地确认 TP-Link 设备准确型号、硬件版本和固件版本。
 - 还未本地确认 TL-ER6120T/TL-ER6120 是否完整支持 Option 66、Option 67、next-server、Vendor Class 或 Client Architecture 区分。
 - 还未实现 `/api/boot-entry`。
+- `/api/boot-entry` 已实现 Phase 3.1 只读模型，所有启动入口与可选服务默认关闭。
 - 还未实现 TFTP/ProxyDHCP 可选模块。
-- 还未实现 Web UI 中的“启动入口集成”页面。
+- Web UI 已新增“启动入口”只读展示页面。
 - 还未创建 `docs/BOOT_ENTRY_INTEGRATION.md`。
+- 已记录后续安全加固项：收敛 Nginx `/boot/` 静态目录的 `autoindex` 与
+  symlink 策略；该项属于网络-facing 配置变更，执行前需重新审查。
 
 ### 22.2 下一阶段目标
 
@@ -2062,6 +2065,8 @@ curl http://localhost:18080/api/boot-entry
    - 由 `architecture_agent` 设计 boot entry 配置模型。
    - 定义 `/api/boot-entry` 返回结构。
    - 明确 HTTP Boot、PXE Boot、TFTP、ProxyDHCP 的启用状态和安全状态字段。
+   - 当前状态：已实现只读模型与 Web UI 展示；未启用 DHCP、ProxyDHCP、
+     TFTP，未修改 Compose 或路由器配置。
 
 3. Phase 3.2：Boot assets 管理
    - 由 `boot_entry_agent` 设计 `ipxe.efi`、`snponly.efi`、`undionly.kpxe` 元数据。
