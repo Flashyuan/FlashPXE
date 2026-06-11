@@ -299,9 +299,13 @@ function renderBootEntry() {
     .map(
       (loader) => `<article>
         <h3>${escapeHtml(loader.filename)}</h3>
-        <p><span class="badge ${loader.present ? "ok" : "warn"}">${loader.present ? "present" : "missing"}</span> <span class="badge">${escapeHtml(loader.architecture)}</span></p>
+        <p><span class="badge ${loader.usable ? "ok" : "warn"}">${escapeHtml(loader.status || "missing")}</span> <span class="badge">${escapeHtml(loader.architecture)}</span></p>
         <p>${escapeHtml(loader.purpose)}</p>
-        <p class="mono">${escapeHtml(loader.url)}</p>
+        <p>${escapeHtml(loader.source_recommendation?.note || "")}</p>
+        <p class="mono">${escapeHtml(loader.usable ? loader.url : loader.path)}</p>
+        <p><small>${formatSize(loader.size_bytes || 0)} · ${escapeHtml(loader.mtime || "mtime unavailable")}</small></p>
+        <p><small>${escapeHtml(loader.sha256 || "sha256 unavailable")}</small></p>
+        <p><small>${escapeHtml(loader.secure_boot_risk?.reason || "")}</small></p>
       </article>`,
     )
     .join("");

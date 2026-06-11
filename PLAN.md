@@ -2040,8 +2040,8 @@ curl http://localhost:18080/api/boot-entry
 - 还未实现 TFTP/ProxyDHCP 可选模块。
 - Web UI 已新增“启动入口”只读展示页面。
 - 还未创建 `docs/BOOT_ENTRY_INTEGRATION.md`。
-- 已记录后续安全加固项：收敛 Nginx `/boot/` 静态目录的 `autoindex` 与
-  symlink 策略；该项属于网络-facing 配置变更，执行前需重新审查。
+- 已收敛 Nginx `/boot/` 静态服务：只允许访问 `menu.ipxe` 与固定白名单
+  loader 文件，其它 `/boot/` 路径返回 404，并启用 `disable_symlinks on`。
 
 ### 22.2 下一阶段目标
 
@@ -2072,6 +2072,21 @@ curl http://localhost:18080/api/boot-entry
    - 由 `boot_entry_agent` 设计 `ipxe.efi`、`snponly.efi`、`undionly.kpxe` 元数据。
    - 只允许 boot loader 位于 `./data/boot/loaders`。
    - 记录来源、校验值、架构、适用场景。
+   - 当前状态：实现中，仅允许只读扫描固定白名单 loader 元数据，不下载、
+     生成、上传、删除或启用 loader。
+   - Nginx `/boot/` 已改为精确白名单 location，避免静态服务绕过
+     API 的 boot asset 安全判断。
+   - 验证记录：
+     - `python3 -m py_compile apps/api/main.py apps/worker/scan_images.py`
+     - `node --check apps/web/assets/app.js`
+     - `bash scripts/preflight/check-network-safety.sh`
+     - `docker compose config`
+     - `nginx -t` 使用本地 `nginx:1.27-alpine` 镜像通过。
+     - `/api/boot-assets` loopback smoke test 覆盖：
+       `usable`、`blocked_symlink`、`blocked_parent_symlink`。
+     - Nginx loopback 静态测试覆盖：
+       `/boot/menu.ipxe=200`、`/boot/loaders/ipxe.efi=200`、
+       `/boot/loaders/=404`、非白名单 loader `404`、symlink loader `403`。
 
 4. Phase 3.3：受控 TFTP/ProxyDHCP 方案设计
    - 仅在 TP-Link DHCP boot option 能力不足时进入。

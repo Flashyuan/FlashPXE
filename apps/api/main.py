@@ -7,6 +7,7 @@ import re
 import sqlite3
 import time
 import uuid
+from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import quote, urlparse
@@ -48,6 +49,52 @@ SPECIAL_NAMES = {
     "initrd": "initrd",
     "boot.wim": "wim",
 }
+LOADER_CATALOG = [
+    {
+        "id": "ipxe-efi",
+        "filename": "ipxe.efi",
+        "purpose": "UEFI HTTP Boot / UEFI PXE chainload",
+        "architecture": "uefi-x64",
+        "boot_mode": ["uefi"],
+        "transport": ["http", "future-tftp"],
+        "source_type": "unknown",
+        "source_guidance": "Use an official iPXE prebuilt file for experiments, or a locally audited build with recorded commit and hash.",
+        "secure_boot_risk": {"level": "high", "reason": "Unsigned iPXE EFI loaders are commonly blocked by Secure Boot."},
+    },
+    {
+        "id": "snponly-efi",
+        "filename": "snponly.efi",
+        "purpose": "UEFI PXE chainload using the firmware SNP driver",
+        "architecture": "uefi-x64",
+        "boot_mode": ["uefi"],
+        "transport": ["future-tftp"],
+        "source_type": "unknown",
+        "source_guidance": "Use a verified iPXE snponly.efi binary from an approved internal source.",
+        "secure_boot_risk": {"level": "high", "reason": "Unsigned iPXE EFI loaders are commonly blocked by Secure Boot."},
+    },
+    {
+        "id": "undionly-kpxe",
+        "filename": "undionly.kpxe",
+        "purpose": "Legacy BIOS PXE chainload using UNDI",
+        "architecture": "bios",
+        "boot_mode": ["bios"],
+        "transport": ["future-tftp"],
+        "source_type": "unknown",
+        "source_guidance": "Use a verified iPXE undionly.kpxe binary from an approved internal source.",
+        "secure_boot_risk": {"level": "not_applicable", "reason": "Legacy BIOS PXE does not use UEFI Secure Boot, but binary provenance still matters."},
+    },
+    {
+        "id": "ipxe-iso",
+        "filename": "ipxe.iso",
+        "purpose": "Manual iPXE ISO boot media",
+        "architecture": "bios-or-uefi",
+        "boot_mode": ["bios", "uefi"],
+        "transport": ["removable-media"],
+        "source_type": "unknown",
+        "source_guidance": "Use a verified iPXE ISO from an approved internal source.",
+        "secure_boot_risk": {"level": "high", "reason": "Secure Boot behavior depends on firmware and ISO contents."},
+    },
+]
 
 
 def ensure_dirs() -> None:
@@ -857,28 +904,75 @@ def network_safety_status() -> dict:
     }
 
 
-def loader_status(filename: str, purpose: str, architecture: str, transport: str) -> dict:
+def loader_status(item: dict) -> dict:
+    filename = item["filename"]
+    loader_root = BOOT_DIR / "loaders"
     rel_path = f"loaders/{filename}"
-    path = BOOT_DIR / rel_path
+    path = loader_root / filename
+    parent_symlink = BOOT_DIR.is_symlink() or loader_root.is_symlink()
+    is_symlink = path.is_symlink()
+    present = (path.exists() or is_symlink) and not parent_symlink
+    is_regular_file = present and path.is_file() and not is_symlink
+    usable = present and is_regular_file and not is_symlink and not parent_symlink
+    stat = path.stat() if usable else None
+    mtime = datetime.fromtimestamp(stat.st_mtime, timezone.utc).isoformat() if stat else ""
+    status = (
+        "usable"
+        if usable
+        else ("blocked_parent_symlink" if parent_symlink else ("blocked_symlink" if is_symlink else ("not_regular_file" if present else "missing")))
+    )
     return {
+        "id": item["id"],
         "filename": filename,
-        "purpose": purpose,
-        "architecture": architecture,
-        "transport": transport,
-        "present": path.is_file() and not path.is_symlink(),
+        "allowed": True,
+        "purpose": item["purpose"],
+        "architecture": item["architecture"],
+        "boot_mode": item["boot_mode"],
+        "transport": item["transport"],
+        "present": present,
+        "is_symlink": is_symlink,
+        "parent_symlink": parent_symlink,
+        "is_regular_file": is_regular_file,
+        "usable": usable,
+        "size_bytes": stat.st_size if stat else 0,
+        "mtime_ns": stat.st_mtime_ns if stat else 0,
+        "mtime": mtime,
+        "sha256": sha256_file(path) if usable else "",
         "url": f"http://{SERVER_IP}:{SYNABOOT_PORT}/boot/{rel_path}",
         "path": f"data/boot/{rel_path}",
+        "status": status,
+        "source_recommendation": {
+            "type": item["source_type"],
+            "note": item["source_guidance"],
+        },
+        "secure_boot_risk": item["secure_boot_risk"],
+        "warnings": [] if usable else [status],
+    }
+
+
+def boot_assets_status() -> dict:
+    loaders = [loader_status(item) for item in LOADER_CATALOG]
+    return {
+        "schema_version": "boot-assets.v1",
+        "phase": "3.2",
+        "mode": "readonly_inventory",
+        "enabled": False,
+        "operation_allowed": False,
+        "root": "data/boot/loaders",
+        "allowed_filenames": [item["filename"] for item in LOADER_CATALOG],
+        "loaders": loaders,
+        "guardrails": [
+            "This API only inventories fixed loader filenames.",
+            "It does not download, generate, upload, replace, delete, or execute boot loaders.",
+            "Symlinks are not accepted as present loader files.",
+            "TFTP and ProxyDHCP remain disabled.",
+        ],
     }
 
 
 def boot_entry_status() -> dict:
     menu_url = f"http://{SERVER_IP}:{SYNABOOT_PORT}/boot/menu.ipxe"
-    loaders = [
-        loader_status("ipxe.efi", "UEFI HTTP Boot / UEFI PXE chainload", "uefi-x64", "http-or-tftp"),
-        loader_status("snponly.efi", "UEFI PXE chainload using SNP driver", "uefi-x64", "tftp"),
-        loader_status("undionly.kpxe", "Legacy BIOS PXE chainload", "bios", "tftp"),
-        loader_status("ipxe.iso", "Manual iPXE ISO boot media", "bios-or-uefi", "removable-media"),
-    ]
+    loaders = boot_assets_status()["loaders"]
     return {
         "schema_version": "boot-entry.v1",
         "phase": "3.1",
@@ -1101,6 +1195,8 @@ class Handler(BaseHTTPRequestHandler):
             json_response(self, 200, network_safety_status())
         elif path == "/api/boot-entry":
             json_response(self, 200, boot_entry_status())
+        elif path == "/api/boot-assets":
+            json_response(self, 200, boot_assets_status())
         else:
             json_response(self, 404, {"error": "not_found"})
 
