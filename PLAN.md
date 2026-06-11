@@ -158,7 +158,7 @@ Images are managed by SynaBoot Web UI.
 - OS：Ubuntu 22.04 LTS
 - 部署方式：Docker Compose
 - 局域网网段：`192.168.1.0/24`
-- SynaBoot 服务 IP：由管理员指定，例如 `192.168.1.4` 或其他固定 IP
+- SynaBoot 服务 IP：由管理员指定，例如 `192.168.1.168` 或其他固定 IP
 - 访问方式：
   - Web UI：`http://<SERVER_IP>:8080`
   - 镜像 HTTP 仓库：`http://<SERVER_IP>:8080/images/`
@@ -299,7 +299,7 @@ synaboot/
 #!ipxe
 
 set server_ip ${next-server}
-set base-url http://192.168.1.4:8080
+set base-url http://192.168.1.168:8080
 
 :start
 menu SynaBoot v1.0 - Internal OS Deployment Platform
@@ -331,7 +331,7 @@ boot
 
 :win11
 echo Windows ISO should be installed from HotPE.
-echo Boot HotPE, then open \\192.168.1.4\images or http://192.168.1.4:8080/images/windows/
+echo Boot HotPE, then open \\192.168.1.168\images or http://192.168.1.168:8080/images/windows/
 goto hotpe
 
 :reboot
@@ -364,13 +364,13 @@ shell
 HotPE 内手动执行：
 
 ```bat
-net use Z: \\192.168.1.4\images
+net use Z: \\192.168.1.168\images
 ```
 
 如需要用户名密码：
 
 ```bat
-net use Z: \\192.168.1.4\images /user:synaboot readonly-password
+net use Z: \\192.168.1.168\images /user:synaboot readonly-password
 ```
 
 然后用户在 Z 盘中访问：
@@ -385,7 +385,7 @@ Z:\windows\win11\sources\install.wim
 访问：
 
 ```text
-http://192.168.1.4:8080/images/windows/
+http://192.168.1.168:8080/images/windows/
 ```
 
 HotPE 中可用浏览器或下载工具打开。
