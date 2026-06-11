@@ -2026,11 +2026,15 @@ curl http://localhost:18080/api/boot-entry
 - `boot_entry_agent` 已替代旧的 `pxe_agent` 概念，负责 HTTP Boot、PXE Boot、iPXE chainload。
 - `git_audit_agent` 已加入阶段收口流程，负责功能/milestone 完成后的 diff 审计、本地 commit 和自动 push 当前 GitHub 分支。
 - Phase 3 仍处于规划与前置调查阶段，尚未实现或启用自动 PXE 入口。
+- Phase 3.0 前置调查已完成首轮公开资料研究，记录见
+  `docs/BOOT_ENTRY_RESEARCH.md`。
+- 当前公开证据不足以证明 TL-ER6120T/TL-ER6120 可可靠提供完整
+  PXE/HTTP Boot metadata，后续必须先做本地只读确认和隔离抓包验证。
 
 当前已知限制：
 
 - 还未本地确认 TP-Link 设备准确型号、硬件版本和固件版本。
-- 还未确认 TL-ER6120T/TL-ER6120 是否完整支持 Option 66、Option 67、next-server、Vendor Class 或 Client Architecture 区分。
+- 还未本地确认 TL-ER6120T/TL-ER6120 是否完整支持 Option 66、Option 67、next-server、Vendor Class 或 Client Architecture 区分。
 - 还未实现 `/api/boot-entry`。
 - 还未实现 TFTP/ProxyDHCP 可选模块。
 - 还未实现 Web UI 中的“启动入口集成”页面。
