@@ -983,6 +983,24 @@ def boot_entry_status() -> dict:
         "operation_allowed": False,
         "local_confirmed": False,
         "summary": "Phase 3 boot entry integration is modeled only. No DHCP, ProxyDHCP, or TFTP service is enabled.",
+        "documentation": {
+            "integration_guide": {
+                "label": "Phase 3 boot entry integration guide",
+                "path": "docs/BOOT_ENTRY_INTEGRATION.md",
+                "purpose": "Readonly safety boundary, verification order, and rollback principles.",
+            },
+            "local_verification_template": {
+                "label": "Local TP-Link capability verification template",
+                "path": "docs/BOOT_ENTRY_LOCAL_VERIFICATION.md",
+                "purpose": "Administrator-filled readonly evidence record before Phase 3.3 can be reconsidered.",
+            },
+        },
+        "local_verification_template": "docs/BOOT_ENTRY_LOCAL_VERIFICATION.md",
+        "phase3_3_gate": {
+            "status": "blocked_until_local_verification",
+            "reason": "TP-Link model, firmware, Option 66/67, next-server, Vendor Class, and Client Architecture support are not locally verified.",
+            "template": "docs/BOOT_ENTRY_LOCAL_VERIFICATION.md",
+        },
         "server": {
             "server_ip": SERVER_IP,
             "http_port": SYNABOOT_PORT,

@@ -2106,6 +2106,20 @@ curl http://localhost:18080/api/boot-entry
    - 展示要交给网络管理员的 boot server、bootfile、URL 参数。
    - 明确风险、回滚步骤和验证步骤。
    - 当前状态：只读入口状态页已实现；后续如新增可操作配置，必须重新审查。
+   - 本轮只读展示增强：`/api/boot-entry` 返回 `documentation`、
+     `local_verification_template` 和 `phase3_3_gate`，Web UI 展示本地确认模板、
+     集成说明和 Phase 3.3 blocked 状态。
+   - 本轮只读展示增强验证记录：
+     - `python3 -m py_compile apps/api/main.py apps/worker/scan_images.py`
+     - `node --check apps/web/assets/app.js`
+     - `bash scripts/preflight/check-network-safety.sh`
+     - `docker compose config`
+     - `ss -lntu | grep -E ':(67|68|69|4011)\b' || true`
+     - `rg -n "network_mode: host|privileged: true|67:|68:|69:|4011:|dnsmasq|proxydhcp|tftp|dhcp" docker-compose.yml scripts apps config docs PLAN.md README.md`
+     - `git diff --check`
+     - `boot_entry_status()` smoke test 覆盖 `documentation`、
+       `local_verification_template`、`phase3_3_gate.status=blocked_until_local_verification`
+       以及 DHCP/ProxyDHCP/TFTP 均为关闭。
 
 6. Phase 3.5：文档与验证
    - 新增 `docs/BOOT_ENTRY_INTEGRATION.md`。

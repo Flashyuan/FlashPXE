@@ -274,16 +274,31 @@ async function renderJobDetail(jobId) {
 }
 
 function renderBootEntry() {
+  const documentation = bootEntry.documentation || {};
+  const docItems = [
+    documentation.local_verification_template,
+    documentation.integration_guide,
+  ].filter(Boolean);
   const summary = [
     ["阶段", bootEntry.phase || ""],
     ["模式", bootEntry.mode || ""],
     ["状态", bootEntry.status || ""],
+    ["Phase 3.3", bootEntry.phase3_3_gate?.status || ""],
     ["启用", bootEntry.enabled ? "是" : "否"],
     ["菜单 URL", bootEntry.server?.menu_url || ""],
     ["HTTP Loader", bootEntry.server?.http_boot_loader_url || ""],
   ];
   document.querySelector("#boot-entry-summary").innerHTML = summary
     .map(([label, value]) => `<article><span>${escapeHtml(label)}</span><strong>${escapeHtml(String(value))}</strong></article>`)
+    .join("");
+  document.querySelector("#boot-entry-docs").innerHTML = docItems
+    .map(
+      (doc) => `<article>
+        <h3>${escapeHtml(doc.label || "")}</h3>
+        <p class="mono">${escapeHtml(doc.path || "")}</p>
+        <p>${escapeHtml(doc.purpose || "")}</p>
+      </article>`,
+    )
     .join("");
   document.querySelector("#boot-entry-list").innerHTML = (bootEntry.entries || [])
     .map(
