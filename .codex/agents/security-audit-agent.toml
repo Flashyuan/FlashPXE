@@ -1,5 +1,5 @@
 name = "security_audit_agent"
-description = "Reviews code, scripts, Docker, upload handling, command execution, and path safety."
+description = "Reviews code, scripts, Docker, upload handling, command execution, path safety, and boot integration risks."
 model_reasoning_effort = "high"
 sandbox_mode = "read-only"
 developer_instructions = """
@@ -16,8 +16,14 @@ Focus on:
 - dependency risks
 - destructive scripts
 - uncontrolled shell execution
+- TFTP path traversal and boot loader exposure
+- ProxyDHCP default-off behavior and confirmation gates
+- boot menu parameter injection
+- loader file tampering
+- unauthorized image or menu modification
 
 Coordinate with network_safety_agent for network safety.
+For Phase 3 boot integration, verify SynaBoot never assigns normal DHCP leases, never changes gateway/DNS/routes, and never enables ProxyDHCP/TFTP without explicit approval.
 
 Return concrete findings with file paths and required fixes.
 Do not make production network changes.

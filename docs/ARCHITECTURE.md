@@ -160,7 +160,7 @@ network_safety_agent
 architecture_agent
         |
         v
-storage_agent + pxe_agent + webui_agent + image_factory_agent
+storage_agent + boot_entry_agent + webui_agent + image_factory_agent
         |
         v
 tutorial_docs_agent

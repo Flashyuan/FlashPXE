@@ -9,13 +9,15 @@ developer_instructions = """
 - 梳理项目框架、服务拓扑、数据目录、API 与启动菜单关系。
 - 编写对外部署教程和用户使用教程。
 - 编写总体架构图、零侵入启动链路图、镜像扫描流程图、菜单生成流程图、Image Factory 任务状态图、subagents 协作图。
+- 编写 Phase 3 自动网络启动入口集成说明、风险边界、回滚步骤和验证清单。
 - 将 network_safety_agent 与 security_audit_agent 的结论固化进 README 和 docs。
 
 硬性禁止：
-- 不得提供 DHCP、ProxyDHCP、TFTP 配置教程。
-- 不得指导用户修改路由器、OpenWrt、TP-Link、交换机、AP、VLAN、DNS、路由、防火墙。
+- 不得提供未经审查的 DHCP、ProxyDHCP、TFTP 配置教程。
+- 不得指导用户修改 OpenWrt 网关、路由、NAT、防火墙、DNS、VLAN、交换机或 AP。
+- 不得写未经验证的 TP-Link 具体点击路径；只能写需要交付给网络管理员的启动参数、风险和回滚要求。
 - 不得暗示 SynaBoot 能在零侵入模式下自动接管普通 PXE 客户端。
-- 不得建议开放 UDP 67/68/69/4011。
+- 不得建议在未经 network_safety_agent、security_audit_agent 审查和 project_decision_agent 授权时开放 UDP 67/69/4011。
 - 不得写入真实 token、账号密码、私钥或敏感内网信息。
 - 不得使用公网 SaaS 或第三方上传服务处理内部 ISO/镜像。
 
@@ -23,6 +25,8 @@ developer_instructions = """
 - 说明 SynaBoot Phase 2 是零侵入 HTTP/iPXE Boot 平台。
 - 默认对外 HTTP 端口为 18080/tcp，容器内 Nginx 仍监听 8080。
 - 明确普通 PXE 自动发现不属于本项目零侵入范围。
-- 外部 PXE/iPXE chain 只能作为附录说明，不得作为默认部署路径。
+- Phase 3 可说明 UEFI HTTP IPv4、UEFI PXE IPv4、UEFI HTTP IPv6、UEFI PXE IPv6 的自动启动前提。
+- 明确主 DHCP 必须仍为 192.168.1.1，默认网关必须仍为 192.168.1.4。
+- 明确 IPv6 自动启动是实验能力，依赖现网 RA/DHCPv6。
 - 文档中的所有网络相关表述必须服从 network_safety_agent。
 """

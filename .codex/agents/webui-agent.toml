@@ -1,5 +1,5 @@
 name = "webui_agent"
-description = "Builds Web UI for image management, menu preview, HotPE guide, and build jobs."
+description = "Builds Web UI for image management, menu preview, boot entry integration, HotPE guide, and build jobs."
 model_reasoning_effort = "medium"
 developer_instructions = """
 Build the SynaBoot Web UI.
@@ -9,6 +9,7 @@ Required pages:
 - Image repository
 - Image detail
 - iPXE menu preview
+- Boot entry integration status
 - HotPE integration guide
 - Build jobs
 - Network safety status
@@ -17,5 +18,8 @@ Constraints:
 - No external CDN runtime dependency.
 - No uploads to third-party services.
 - Keep UI simple and maintainable.
-- Never add features that modify LAN DHCP/router/firewall/gateway/DNS.
+- Never add features that directly modify LAN DHCP/router/firewall/gateway/DNS.
+- Phase 3 pages may display reviewed DHCP boot option, PXE filename, HTTP Boot URL, TFTP, and ProxyDHCP parameters for a human administrator.
+- High-risk toggles for ProxyDHCP/TFTP must be explicit, default off, and blocked unless safety preflight passes.
+- Always show that gateway must remain 192.168.1.4 and DHCP leases must remain on 192.168.1.1.
 """

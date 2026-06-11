@@ -1,32 +1,38 @@
 # SynaBoot 项目开发计划（Codex Goal Mode）
 
-> 项目目标：在 **不影响现有局域网网络架构、DHCP、网关、路由、DNS、防火墙、OpenWrt、TP-Link 主路由/交换机配置** 的前提下，在一台 Ubuntu 22.04 服务器上部署一个局域网内部可访问的 iPXE/HTTP Boot 系统安装平台。用户可像 Ventoy 一样选择多个系统镜像进行安装，支持 HotPE、Windows 11、Ubuntu 22.04.3 等镜像，并支持后续制作/封装预装软件、驱动和配置的自定义镜像。
+> 项目目标：在 **保证现有局域网不断网、主 DHCP 仍由 TP-Link TL-ER6120T 承担、默认网关保持 192.168.1.4 OpenWrt** 的前提下，在一台 Ubuntu 22.04 服务器上部署一个局域网内部可访问的 iPXE/HTTP Boot 系统安装平台。用户可像 Ventoy 一样选择多个系统镜像进行安装，支持 HotPE、Windows 11、Ubuntu 22.04.3 等镜像，并支持后续制作/封装预装软件、驱动和配置的自定义镜像。
 
 ---
 
 ## 0. 最高优先级安全原则
 
-本项目运行在生产办公局域网内，任何可能影响现有网络通信的行为都必须默认禁止。
+本项目运行在生产办公局域网内，任何可能影响现有网络通信的行为都必须先审查、再变更、可回滚。Phase 1/2 继续保持零侵入；Phase 3 允许在明确审批后做受控网络启动集成，但不得让局域网断网，不得迁移主 DHCP，不得改变默认网关。
 
 ### 0.1 绝对禁止
 
 任何 agent、脚本、服务、Docker Compose、安装命令，都不得执行以下操作：
 
 - 不得安装、启动、启用 DHCP Server。
-- 不得启用 ProxyDHCP。
-- 不得运行 dnsmasq 的 DHCP/ProxyDHCP 模式。
-- 不得修改主路由 DHCP 配置。
-- 不得修改 TP-Link 企业路由器配置。
-- 不得修改 OpenWrt 配置。
-- 不得修改默认网关。
+- 不得让 SynaBoot 取代 TP-Link TL-ER6120T 成为 DHCP 地址分配服务器。
+- 不得将 DHCP 默认网关从 `192.168.1.4` 改为其他地址。
+- 不得修改 OpenWrt 网关、路由、NAT、防火墙、DNS 转发等生产转发路径。
 - 不得修改主机 DNS。
 - 不得修改交换机、AP、VLAN、STP、端口隔离、ACL 配置。
 - 不得执行 `iptables`、`nft`、`ufw`、`firewalld`、`route`、`ip route add/change/del`、`nmcli connection modify` 等会改变现有网络路径/防火墙/路由的命令。
 - 不得让 Docker 容器使用 `network_mode: host`，除非 NetworkSafetyAgent 明确批准。
-- 不得占用 UDP 67/68/69/4011。
-- 不得监听 DHCP/TFTP 相关端口。
-- 不得以“为了方便 PXE”作为理由修改现网 DHCP Option 66/67。
+- 不得在未审批、未维护窗口、未回滚方案的情况下监听 UDP 67/68/69/4011。
+- 不得在未审批的情况下启用 ProxyDHCP、TFTP、DHCPv6 Boot 服务。
+- 不得在未审批的情况下修改 TP-Link 企业路由器 DHCP 启动选项。
 - 不得让任何服务成为默认网关、DNS 或 DHCP。
+
+### 0.1.1 Phase 3 受控允许项
+
+为实现 BIOS/UEFI 中 `UEFI: HTTP IPv4`、`UEFI: PXE IPv4`、`UEFI: HTTP IPv6`、`UEFI: PXE IPv6` 自动进入 SynaBoot，Phase 3 允许在审批后引入以下能力：
+
+- 在 TP-Link TL-ER6120T 的 DHCP 中只增加网络启动相关 Option，不改变地址池、租约、DNS、网关。
+- 在 SynaBoot 服务器上提供 HTTP Boot loader、iPXE loader、TFTP bootfile、可选 ProxyDHCP。
+- 允许监听启动所需端口，但必须默认关闭、显式启用、可回滚，并由 `network_safety_agent` 和 `security_audit_agent` 双审查。
+- 允许为 IPv6 HTTP/PXE Boot 设计 DHCPv6/RA 前提检查，但不得自动改 OpenWrt 或主路由 IPv6 配置。
 
 ### 0.2 必须确认安全后才能执行
 
@@ -183,7 +189,7 @@ synaboot/
 │   └── agents/
 │       ├── network-safety-agent.toml
 │       ├── architecture-agent.toml
-│       ├── pxe-agent.toml
+│       ├── boot-entry-agent.toml
 │       ├── storage-agent.toml
 │       ├── image-factory-agent.toml
 │       ├── webui-agent.toml
@@ -570,7 +576,33 @@ nginx + api + sqlite + worker
 
 Codex 官方支持通过 `.codex/agents/*.toml` 定义 project-scoped custom agents。每个 agent 必须有 `name`、`description`、`developer_instructions`。本项目必须使用 subagents，并且所有代码变更都要经过安全监管。
 
-### 8.1 network_safety_agent
+### 8.1 research_agent
+
+前置调查 agent。
+
+职责：
+
+- 调查外部事实、设备能力、协议行为和官方文档。
+- 回答其他 subagents 遇到的知识库或互联网检索问题。
+- 对 TL-ER6120T/TL-ER6120 的 DHCP Option、PXE、HTTP Boot 能力给出证据化结论。
+- 明确区分已确认事实、推断、未知项和必须本地验证的内容。
+- 不直接修改任何生产网络配置。
+
+### 8.2 project_decision_agent
+
+项目决策 agent。
+
+职责：
+
+- 代替用户把控项目方向、重大技术路线、阶段优先级和方案取舍。
+- 始终围绕最终目标推进：局域网电脑通过 `UEFI: PXE IPv4` 进入 SynaBoot，选择预置 ISO/镜像并开始安装系统。
+- 只在出现决策性问题时触发，不参与普通实现细节。
+- 在 `research_agent`、`network_safety_agent`、`security_audit_agent` 和相关实现 agent 提供足够信息后做取舍。
+- 可以批准 `git_audit_agent` 将审计通过的本地 commit push 到 GitHub 当前分支。
+- 不得覆盖 `network_safety_agent` 或 `security_audit_agent` 的 `BLOCKED` 结论。
+- 不得批准会影响当前局域网正常 DHCP、默认网关、内网通信或外网连接的方案。
+
+### 8.3 network_safety_agent
 
 最高优先级监管 agent。
 
@@ -589,7 +621,7 @@ Codex 官方支持通过 `.codex/agents/*.toml` 定义 project-scoped custom age
 - 不得为了完成功能放宽安全要求。
 - 任何不确定都必须 `BLOCKED`。
 
-### 8.2 architecture_agent
+### 8.4 architecture_agent
 
 职责：
 
@@ -600,7 +632,7 @@ Codex 官方支持通过 `.codex/agents/*.toml` 定义 project-scoped custom age
 - 拆分 milestone。
 - 不得修改网络配置。
 
-### 8.3 pxe_agent
+### 8.5 boot_entry_agent
 
 职责：
 
@@ -608,9 +640,13 @@ Codex 官方支持通过 `.codex/agents/*.toml` 定义 project-scoped custom age
 - 设计 HotPE 启动项。
 - 设计 Ubuntu 启动项。
 - 设计 iPXE ISO/EFI 生成脚本。
-- 不得实现 DHCP/ProxyDHCP/TFTP。
+- 设计 Phase 3 HTTP Boot、PXE Boot、iPXE chainload 启动链。
+- 维护 `ipxe.efi`、`snponly.efi`、`undionly.kpxe` 等 boot loader 元数据。
+- 遇到设备能力或协议兼容性疑问时，先请求 `research_agent` 调查。
+- 不得直接修改 TP-Link、OpenWrt、交换机、AP、网关、DNS、路由、防火墙。
+- ProxyDHCP/TFTP 只能作为 Phase 3 受控可选模块，默认关闭并经过双审查。
 
-### 8.4 storage_agent
+### 8.6 storage_agent
 
 职责：
 
@@ -620,7 +656,7 @@ Codex 官方支持通过 `.codex/agents/*.toml` 定义 project-scoped custom age
 - 实现镜像扫描、hash、元数据。
 - Samba 变更必须先让 network_safety_agent 审查。
 
-### 8.5 image_factory_agent
+### 8.7 image_factory_agent
 
 职责：
 
@@ -630,7 +666,7 @@ Codex 官方支持通过 `.codex/agents/*.toml` 定义 project-scoped custom age
 - 不得在 Ubuntu 上假装可以完整无风险封装所有 Windows 镜像。
 - 必须明确哪些任务需要 Windows 构建机。
 
-### 8.6 webui_agent
+### 8.8 webui_agent
 
 职责：
 
@@ -641,7 +677,17 @@ Codex 官方支持通过 `.codex/agents/*.toml` 定义 project-scoped custom age
 - 不得引入公网依赖。
 - 不得上传镜像到第三方。
 
-### 8.7 security_audit_agent
+### 8.9 tutorial_docs_agent
+
+职责：
+
+- 编写和维护 README、用户指南、管理员指南和架构说明。
+- 绘制服务拓扑、启动链路、镜像扫描、菜单生成、subagents 协作图。
+- 编写 Phase 3 自动网络启动入口集成说明。
+- 固化安全边界、回滚步骤和验证方法。
+- 不得编写未经审查的路由器、DHCP、ProxyDHCP、TFTP 实操教程。
+
+### 8.10 security_audit_agent
 
 职责：
 
@@ -802,13 +848,17 @@ curl http://localhost:18080/boot/menu.ipxe
 
 ```text
 /goal 按 PLAN.md 开发 SynaBoot。必须使用 subagents：
-1. 先让 network_safety_agent 审查 PLAN.md、AGENTS.md、docker-compose.yml、所有脚本的网络安全边界。
-2. 让 architecture_agent 设计最小可用架构和目录。
-3. 让 pxe_agent 实现 iPXE HTTP Boot 菜单生成，严禁 DHCP/ProxyDHCP/TFTP。
-4. 让 storage_agent 实现 data/images 镜像仓库扫描和 HTTP 静态访问。
-5. 让 webui_agent 实现最小 Web UI。
-6. 让 image_factory_agent 只实现镜像制作任务框架和 Ubuntu autoinstall 模板，不要承诺 Linux 上完整封装 Windows ISO。
-7. 最后让 security_audit_agent 和 network_safety_agent 共同审查所有变更。
+1. 先让 research_agent 调查不确定的外部事实、设备能力和协议限制。
+2. 决策性问题交给 project_decision_agent，代替用户把控方向和重大取舍。
+3. 再让 network_safety_agent 审查 PLAN.md、AGENTS.md、docker-compose.yml、所有脚本的网络安全边界。
+4. 让 architecture_agent 设计最小可用架构和目录。
+5. 让 boot_entry_agent 实现 iPXE HTTP Boot 菜单生成；Phase 1/2 严禁 DHCP/ProxyDHCP/TFTP。
+6. 让 storage_agent 实现 data/images 镜像仓库扫描和 HTTP 静态访问。
+7. 让 webui_agent 实现最小 Web UI。
+8. 让 image_factory_agent 只实现镜像制作任务框架和 Ubuntu autoinstall 模板，不要承诺 Linux 上完整封装 Windows ISO。
+9. 让 tutorial_docs_agent 维护 README、架构说明、用户教程和安全边界文档。
+10. 最后让 security_audit_agent 和 network_safety_agent 共同审查所有变更。
+11. 每完成一个功能或 milestone 后，让 git_audit_agent 审查 diff；通过后自动创建本地 commit，并在 project_decision_agent 批准后 push 当前 GitHub 分支。
 
 强制要求：
 - 不得修改 DHCP。
@@ -987,9 +1037,40 @@ SynaBoot 本身不配置、不修改、不接管外部 PXE 环境。
 
 - `network_safety_agent` 与 `security_audit_agent` 优先级最高。
 - 只要网络安全或安全审计输出 `BLOCKED`，相关开发必须停止。
-- 其他 agent 的方案不得绕过安全 agent 的限制。
+- `project_decision_agent` 负责方向、优先级和重大取舍，但不得绕过安全 agent 的限制。
+- 其他 agent 的方案不得绕过安全 agent 或决策 agent 的限制。
 
-### 16.1 network_safety_agent
+### 16.1 research_agent
+
+二期/三期前置调查 agent。
+
+职责：
+
+- 调查框架、协议、设备、固件、loader 等外部事实。
+- 当其他 agent 遇到知识库或互联网问题时，负责检索并反馈证据化结论。
+- 不直接做架构决策，不直接修改代码，不修改生产网络配置。
+
+### 16.2 project_decision_agent
+
+项目决策 agent。
+
+触发条件：
+
+- 多个技术路线都可行，需要选择方向。
+- agent 之间结论冲突，但没有安全 BLOCKED。
+- 需要决定某项功能进入当前阶段、后续阶段还是放弃。
+- 需要决定是否从 TP-Link DHCP Boot Option 切换到受控 ProxyDHCP。
+- `git_audit_agent` 准备推送阶段性 commit，需要确认是否符合项目方向。
+
+职责：
+
+- 代替用户把控项目方向、阶段目标、重大取舍和优先级。
+- 将最终目标固定为 `UEFI: PXE IPv4 -> SynaBoot 菜单 -> 选择预置 ISO/镜像 -> 开始安装系统`。
+- 在不影响现有局域网 DHCP、网关、内网通信和外网连接的前提下做决策。
+- 对被批准的方向输出条件、后续参与 agent 和验证要求。
+- 不覆盖 `network_safety_agent` 或 `security_audit_agent` 的 `BLOCKED`。
+
+### 16.3 network_safety_agent
 
 前置审查 agent。
 
@@ -1000,7 +1081,7 @@ SynaBoot 本身不配置、不修改、不接管外部 PXE 环境。
 - 审查是否存在 DHCP/ProxyDHCP/TFTP/UDP 67/68/69/4011。
 - 审查是否存在 host network、privileged、危险挂载、路由/防火墙命令。
 
-### 16.2 architecture_agent
+### 16.4 architecture_agent
 
 架构统筹 agent。
 
@@ -1010,7 +1091,7 @@ SynaBoot 本身不配置、不修改、不接管外部 PXE 环境。
 - 定义 API、元数据、任务状态、菜单生成的数据流。
 - 保持现有轻量架构，不在二期强行迁移 FastAPI/React/Vue。
 
-### 16.3 storage_agent
+### 16.5 storage_agent
 
 镜像仓库 agent。
 
@@ -1022,7 +1103,7 @@ SynaBoot 本身不配置、不修改、不接管外部 PXE 环境。
 - 判断镜像启动就绪状态。
 - 拒绝路径穿越、绝对路径、软链接越界。
 
-### 16.4 pxe_agent
+### 16.6 boot_entry_agent
 
 HTTP/iPXE agent。
 
@@ -1033,8 +1114,9 @@ HTTP/iPXE agent。
 - 支持 HotPE、Ubuntu/Linux、Tools。
 - Windows ISO/WIM 只生成 HotPE 辅助安装说明，不伪装成通用直接启动。
 - 保留 `shell`、`reboot`、`poweroff`、`boot_failed` 等安全入口。
+- Phase 3 设计 HTTP Boot/PXE Boot/iPXE chainload 参数，但不得直接修改生产网络设备。
 
-### 16.5 webui_agent
+### 16.7 webui_agent
 
 Web UI agent。
 
@@ -1046,7 +1128,7 @@ Web UI agent。
 - 实现 Dashboard、镜像仓库、镜像详情、菜单预览、HotPE 指南、构建任务、网络安全页。
 - 所有写操作必须通过 admin token。
 
-### 16.6 image_factory_agent
+### 16.8 image_factory_agent
 
 镜像工厂 agent。
 
@@ -1058,7 +1140,7 @@ Web UI agent。
 - 不在 Linux 容器内承诺完整封装 Windows ISO。
 - 不执行真实磁盘格式化、分区、写盘。
 
-### 16.7 tutorial_docs_agent
+### 16.9 tutorial_docs_agent
 
 二期新增文档 agent。
 
@@ -1082,7 +1164,7 @@ Web UI agent。
 - 不得暗示 SynaBoot 能在零侵入模式下自动接管普通 PXE 客户端。
 - 不得包含真实 token、真实账号密码或敏感内网信息。
 
-### 16.8 security_audit_agent
+### 16.10 security_audit_agent
 
 最终安全审计 agent。
 
@@ -1093,16 +1175,22 @@ Web UI agent。
 - 审查文档是否存在危险网络操作指引。
 - 与 `network_safety_agent` 一起完成二期最终验收。
 
-### 16.9 git_audit_agent
+### 16.11 git_audit_agent
 
-提交前审查 agent。
+阶段收口与 Git 审计 agent。
 
 职责：
 
-- 审查 git diff。
+- 每完成一个功能、一个 milestone 或一组阶段性代码后自动介入。
+- 审查 git diff、暂存范围、未跟踪文件和生成文件。
 - 确认无无关文件、无秘密信息、无危险网络变更。
-- 每个版本提交前输出审查结论。
-- push 远程前必须等待用户明确确认。
+- 确认必要验证命令已经执行，或明确记录未执行原因。
+- 审计通过后可自动 stage 并创建本地 commit。
+- commit message 必须说明阶段目标、核心变更和安全边界。
+- 若变更涉及网络、Compose、脚本、启动入口或安全边界，push 前必须有 `network_safety_agent` 和/或 `security_audit_agent` 的通过结论。
+- push 到 GitHub 当前分支前必须记录 remote、branch、commit range、提交摘要和风险摘要。
+- `project_decision_agent` 确认符合项目方向后，可自动 push 到 GitHub 当前分支。
+- 不得 push secrets、`.env`、真实凭据、无关文件、危险脚本或未审查的网络影响变更。
 
 ---
 
@@ -1362,7 +1450,7 @@ README 必须避免：
 验收：
 
 - `PLAN.md` 包含二期网络模型、subagents 编排、功能计划、测试验收。
-- 用户确认后才开始二期代码实现。
+- `project_decision_agent` 确认阶段方向后才开始二期/三期代码实现。
 
 ### Milestone 2.1：网络安全复核
 
@@ -1478,13 +1566,15 @@ curl http://localhost:18080/boot/menu.ipxe
 
 - `network_safety_agent` 终审。
 - `security_audit_agent` 终审。
-- `git_audit_agent` 提交前审查。
+- `git_audit_agent` 阶段收口审查、创建本地 commit，并在决策通过后 push 当前分支。
 
 验收：
 
 - 所有审查均为 `APPROVED`。
 - 所有 BLOCKED 项已修复。
-- 用户明确确认后才 push 远程。
+- 每个功能或 milestone 均有对应 git 审计记录和本地 commit。
+- `git_audit_agent` 记录目标 remote/branch/commit range 和风险摘要。
+- `project_decision_agent` 确认阶段方向后自动 push 当前 GitHub 分支。
 
 验证记录：
 
@@ -1553,15 +1643,17 @@ docker compose down
 /goal SERVER_IP 是 192.168.1.168。当前 SynaBoot 一期已完工，请严格按 PLAN.md 的二期计划继续开发。
 
 必须开启 subagents 模式，并使用 .codex/agents 中定义的 agents：
-1. 所有网络相关变更先由 network_safety_agent 审查。
-2. architecture_agent 负责二期架构和接口契约。
-3. storage_agent 实现 data/images 扫描、元数据和 SHA256 缓存。
-4. pxe_agent 实现 HTTP-only iPXE 动态菜单，严禁 DHCP/ProxyDHCP/TFTP。
-5. webui_agent 实现二期 Web UI 页面，不依赖 CDN。
-6. image_factory_agent 实现安全的镜像工厂任务框架。
-7. tutorial_docs_agent 负责架构说明书、图例和对外 README。
-8. security_audit_agent 和 network_safety_agent 做最终审查。
-9. git_audit_agent 在提交前审查 diff。
+1. research_agent 先调查不确定的外部事实、设备能力和协议限制。
+2. 决策性问题交给 project_decision_agent，代替用户把控方向和重大取舍。
+3. 所有网络相关变更再由 network_safety_agent 审查。
+4. architecture_agent 负责二期架构和接口契约。
+5. storage_agent 实现 data/images 扫描、元数据和 SHA256 缓存。
+6. boot_entry_agent 实现 HTTP-only iPXE 动态菜单；Phase 3 另行设计受控 HTTP/PXE 自动启动入口。
+7. webui_agent 实现二期 Web UI 页面，不依赖 CDN。
+8. image_factory_agent 实现安全的镜像工厂任务框架。
+9. tutorial_docs_agent 负责架构说明书、图例和对外 README。
+10. security_audit_agent 和 network_safety_agent 做最终审查。
+11. git_audit_agent 在每个功能或 milestone 完成后审查 diff；通过后自动创建本地 commit，并在 project_decision_agent 批准后 push 当前 GitHub 分支。
 
 强制安全要求：
 - 不得启用 DHCP。
@@ -1578,3 +1670,534 @@ docker compose down
 开发顺序必须按 PLAN.md 二期 Milestones 2.1 到 2.7 推进。
 每完成一个 milestone，先更新 PLAN.md 进度，再继续下一步。
 ```
+
+---
+
+## 21. Phase 3：自动网络启动入口集成
+
+Phase 3 的目标是让用户在主板启动菜单中选择以下入口时，能够自动进入 SynaBoot 镜像选择界面：
+
+- `UEFI: HTTP IPv4 <NIC>`
+- `UEFI: PXE IPv4 <NIC>`
+- `UEFI: HTTP IPv6 <NIC>`
+- `UEFI: PXE IPv6 <NIC>`
+
+安全前提：
+
+- 主 DHCP 服务器继续由 `192.168.1.1` TP-Link TL-ER6120T 承担。
+- 默认网关必须继续是 `192.168.1.4` OpenWrt。
+- SynaBoot 服务器必须使用固定 IP 或 DHCP 保留地址，禁止与 DHCP 地址池冲突。
+- 所有网络启动变更必须先有回滚步骤，并在维护窗口中执行。
+- 任何变更不得影响普通终端继续获取 IP、访问网关、访问互联网和访问内网服务。
+
+### 21.0 Phase 3 前置调查门禁
+
+Phase 3 不允许从假设直接进入设计或实现。所有外部事实不确定的问题，必须先交给 `research_agent` 调查并输出证据包，再由对应 agent 继续设计。
+
+`research_agent` 职责：
+
+- 调查 TL-ER6120T/TL-ER6120 的硬件版本、固件版本、DHCP Option 能力和限制。
+- 调查 DHCP Option 66、Option 67、next-server、bootfile-url、Vendor Class、Client Architecture 对 PXE/HTTP Boot 的影响。
+- 调查 UEFI PXE IPv4、UEFI HTTP Boot、iPXE chainload、TFTP、ProxyDHCP 的兼容性和已知坑。
+- 当其他 subagent 需要知识库或互联网信息时，统一由 `research_agent` 检索并反馈。
+- 输出证据来源、可信度、已确认事实、未知项、对 SynaBoot 的影响和推荐下一步。
+
+当前已知初步调查结论：
+
+- TP-Link 官方 TL-ER6120 V3 固件发布说明显示曾新增 DHCP Option 66、150、159、160、176、242 支持。
+- 未在同一官方发布说明中看到 TL-ER6120 V3 明确新增 Option 67 的直接证据。
+- TP-Link/Omada 文档说明 Option 66 用于 TFTP server 信息，Option 67 用于 TFTP boot file 路径。
+- 社区资料显示，部分 TP-Link/Omada 路由即使提供 66/67，也可能因为缺少 next-server 或实现差异导致 PXE 客户端仍取错 TFTP server。
+
+因此，在本项目实际执行前必须本地确认：
+
+- 当前设备到底是 `TL-ER6120T` 还是 `TL-ER6120`，硬件版本和固件版本分别是什么。
+- Web 管理界面是否支持 DHCP Option 66。
+- Web 管理界面是否支持 DHCP Option 67 或等价的 Network Boot/File Name 字段。
+- 是否支持 next-server / boot server IP。
+- 是否支持按 Vendor Class（如 `PXEClient`、`HTTPClient`）或客户端架构区分启动参数。
+
+调查门禁结论规则：
+
+- 若 TP-Link 能完整提供 PXE 所需 boot server + bootfile，并且不会改变租约、DNS、网关，则优先走主路由 DHCP Boot Option 模式。
+- 若 TP-Link 只支持 Option 66、不支持 Option 67/next-server，或 PXE 客户端实际取错 boot server，则不强行在 TP-Link 上硬配，转入 SynaBoot 受控 ProxyDHCP 方案评估。
+- 若设备能力无法确认，Phase 3 标记为 `BLOCKED`，不得启用 TFTP/ProxyDHCP，也不得修改生产 DHCP。
+
+### 21.1 推荐实现路径
+
+推荐优先级：
+
+1. **主路由 DHCP Boot Option 模式**。
+   - TP-Link 仍发放客户端 IP、网关、DNS。
+   - 仅增加 HTTP Boot/PXE 所需的 bootfile 信息。
+   - 这是最符合“主 DHCP 不迁移”的方案。
+   - 必须先验证 TL-ER6120T 是否支持按客户端类型或 Vendor Class 区分 `HTTPClient` 与 `PXEClient`。
+   - 若只能全局下发单一 bootfile，不能直接用于同时覆盖 HTTP Boot 和 PXE Boot。
+
+2. **SynaBoot 辅助 ProxyDHCP 模式**。
+   - 仅当 TP-Link 无法按客户端类型下发 bootfile 时使用。
+   - ProxyDHCP 只回答 PXE/HTTP Boot 引导信息，不分配 IP。
+   - 必须默认关闭，启用前双审查。
+
+3. **iPXE USB/ISO/EFI 保底模式**。
+   - 当某些主板固件不支持 HTTP Boot、IPv6 Boot 或 Secure Boot 阻止未签名 loader 时使用。
+
+### 21.2 IPv4 HTTP Boot
+
+目标入口：
+
+```text
+UEFI: HTTP IPv4 Realtek PCIe 2.5GBE Family Controller
+```
+
+必要条件：
+
+- 客户端网卡和主板固件支持 UEFI HTTP Boot。
+- 客户端可从 TP-Link DHCP 获取 IPv4 地址。
+- DHCP 响应中能为 HTTP Boot 客户端提供 HTTP URL。
+- HTTP URL 指向 SynaBoot 的 UEFI loader，例如：
+
+```text
+http://<SYNABOOT_SERVER_IP>:18080/boot/loaders/ipxe.efi
+```
+
+引导链：
+
+```text
+UEFI HTTP IPv4
+  → TP-Link DHCP 获取 IP 和 boot URL
+  → HTTP 下载 ipxe.efi
+  → iPXE chain http://<SYNABOOT_SERVER_IP>:18080/boot/menu.ipxe
+  → SynaBoot 镜像选择菜单
+```
+
+注意：
+
+- 部分 UEFI HTTP Boot 固件对非 80 端口兼容性较差。若 `:18080` 无法启动，Phase 3 可新增受审查的 `80/tcp` HTTP Boot 入口，但不得改防火墙或网关。
+- Secure Boot 可能拒绝未签名 `ipxe.efi`。此时需要关闭 Secure Boot，或使用可信签名 loader。
+
+### 21.3 IPv4 PXE Boot
+
+目标入口：
+
+```text
+UEFI: PXE IPv4 Realtek PCIe 2.5GBE Family Controller
+```
+
+必要条件：
+
+- 客户端可从 TP-Link DHCP 获取 IPv4 地址。
+- PXE 客户端能获得 boot server 和 bootfile。
+- SynaBoot 提供 TFTP 或可被 PXE 固件支持的 NBP 下载方式。
+- bootfile 推荐先加载 iPXE，再由 iPXE 使用 HTTP 进入菜单。
+
+引导链：
+
+```text
+UEFI PXE IPv4
+  → TP-Link DHCP 获取 IP、网关 192.168.1.4、PXE bootfile
+  → 下载 snponly.efi/ipxe.efi
+  → iPXE chain http://<SYNABOOT_SERVER_IP>:18080/boot/menu.ipxe
+  → SynaBoot 镜像选择菜单
+```
+
+实现方式：
+
+- 首选：TP-Link DHCP 下发 PXE bootfile，SynaBoot 只提供 TFTP/HTTP bootfile。
+- 备选：SynaBoot 启用 ProxyDHCP，只向 PXE 客户端补充 bootfile，不发 IP。
+
+### 21.4 IPv6 HTTP/PXE Boot
+
+目标入口：
+
+```text
+UEFI: HTTP IPv6 Realtek PCIe 2.5GBE Family Controller
+UEFI: PXE IPv6 Realtek PCIe 2.5GBE Family Controller
+```
+
+必要条件：
+
+- 局域网 IPv6 已正确启用。
+- 客户端可通过 RA/SLAAC/DHCPv6 获得 IPv6 地址和路由。
+- DHCPv6 或等效机制能提供 IPv6 bootfile URL。
+- SynaBoot HTTP/TFTP 服务绑定 IPv6 地址并通过本地链路可达。
+
+约束：
+
+- Phase 3 不自动修改 OpenWrt IPv6、RA、DHCPv6 或防火墙。
+- 如果当前 LAN 没有稳定 IPv6 管理能力，IPv6 启动项标记为“需外部网络前提”，不得伪装为已支持。
+
+### 21.5 Router/DHCP 配置边界
+
+TP-Link TL-ER6120T 仍是唯一 DHCP 地址分配方。
+
+允许变更范围：
+
+- DHCP bootfile/next-server/boot-url 等启动选项。
+- 按客户端类型区分 HTTP Boot、PXE Boot、普通 DHCP 客户端。
+- 为 SynaBoot 服务器配置固定地址或 DHCP 地址保留。
+
+前置验证：
+
+- 确认 TL-ER6120T 固件版本。
+- 确认是否支持 DHCP Option 66/67、bootfile URL、next-server。
+- 确认是否支持按 Vendor Class 或客户端架构区分 HTTP Boot 和 PXE Boot。
+- 若不支持区分，优先切换到 SynaBoot 辅助 ProxyDHCP 模式，而不是给所有客户端下发同一个 bootfile。
+
+禁止变更范围：
+
+- 改 DHCP 地址池导致普通终端无法续租。
+- 改默认网关，必须保持 `192.168.1.4`。
+- 改 DNS、VLAN、ACL、防火墙、NAT、静态路由。
+- 关闭或迁移主 DHCP。
+- 让 SynaBoot 同时提供普通 DHCP 地址分配。
+
+回滚要求：
+
+- 记录变更前 DHCP 配置截图或导出配置。
+- 先在单台测试机或测试 VLAN 验证。
+- 若普通终端续租失败、网关错误、无法访问内网或互联网，立即撤销 boot option/ProxyDHCP/TFTP。
+
+### 21.6 Phase 3 Subagents 重塑
+
+#### 21.6.1 research_agent
+
+Phase 3 前置调查 agent。
+
+职责：
+
+- 在任何 Phase 3 网络启动方案设计前，先调查外部事实和设备能力。
+- 回答其他 subagent 提出的知识库或互联网检索问题。
+- 优先引用官方文档、固件发布说明、RFC、iPXE/ProxyDHCP/TFTP 项目文档。
+- 将社区经验标注为低可信度辅助证据。
+- 明确区分已确认事实、推断、未知项和必须本地验证的内容。
+- 对 TL-ER6120T 是否支持 Option 66/67、next-server、Vendor Class 区分能力给出证据化结论。
+
+输出必须包含：
+
+- `QUESTION`
+- `SOURCES`
+- `CONFIRMED FACTS`
+- `UNKNOWN / NEEDS LOCAL VERIFICATION`
+- `IMPLICATION FOR SYNABOOT`
+- `RECOMMENDED NEXT STEP`
+- `CONFIDENCE`
+
+#### 21.6.2 project_decision_agent
+
+Phase 3 方向决策 agent。
+
+职责：
+
+- 在 Phase 3 遇到路线选择时代表用户做决策。
+- 将 `UEFI: PXE IPv4` 自动进入 SynaBoot 作为当前最高优先级目标。
+- 根据 `research_agent` 的证据选择 TP-Link DHCP Boot Option、受控 ProxyDHCP、TFTP loader、HTTP chainload 等路径。
+- 当 TP-Link 能力不足时，决定是否进入受控 ProxyDHCP 方案。
+- 当 IPv6、HTTP Boot、Secure Boot、Windows 安装方式等内容影响范围过大时，决定是否延后。
+- 批准 `git_audit_agent` 将审计通过的 Phase 3 阶段 commit push 到当前 GitHub 分支。
+
+限制：
+
+- 不得覆盖 `network_safety_agent` 或 `security_audit_agent` 的 `BLOCKED`。
+- 不得批准影响现有 LAN DHCP、默认网关、DNS、路由、防火墙、内网通信或外网连接的方案。
+
+#### 21.6.3 network_safety_agent
+
+从“零侵入绝对禁止”调整为“生产网络变更门禁”。
+
+职责：
+
+- 审查 DHCP boot option、ProxyDHCP、TFTP、HTTP Boot、IPv6 Boot 方案。
+- 审查 `research_agent` 的事实结论是否足以支撑网络变更。
+- 确认主 DHCP 仍为 TP-Link，默认网关仍为 `192.168.1.4`。
+- 确认 SynaBoot 不提供普通 DHCP 地址分配。
+- 确认所有高风险服务默认关闭、显式启用、可回滚。
+- 输出 `APPROVED`、`APPROVED_WITH_EXTERNAL_CHANGE` 或 `BLOCKED`。
+
+#### 21.6.4 boot_entry_agent
+
+建议将 `pxe_agent` 重塑为 `boot_entry_agent`。
+
+职责：
+
+- 设计 HTTP Boot、PXE Boot、iPXE chain 的完整引导链。
+- 维护 `ipxe.efi`、`snponly.efi`、`undionly.kpxe`、`menu.ipxe` 等 boot assets。
+- 区分 UEFI、Legacy BIOS、IPv4、IPv6、Secure Boot 场景。
+- 不直接修改路由器或 OpenWrt 配置。
+- 遇到设备兼容性、协议行为、loader 选择等外部事实不确定时，先请求 `research_agent` 调查。
+
+#### 21.6.5 architecture_agent
+
+职责新增：
+
+- 设计 Phase 3 boot entry 配置模型。
+- 定义 `/api/boot-entry`、`/api/network-safety` 扩展字段。
+- 将 HTTP、TFTP、ProxyDHCP 设计为独立可开关模块。
+- 保持 Phase 1/2 默认零侵入部署仍可运行。
+
+#### 21.6.6 webui_agent
+
+职责新增：
+
+- 新增“启动入口集成”页面。
+- 展示 HTTP IPv4、PXE IPv4、HTTP IPv6、PXE IPv6 的就绪状态。
+- 展示应交给网络管理员的 boot URL、bootfile、next-server 参数。
+- 明确标记哪些步骤需要在 TP-Link 或外部网络设备中手动配置。
+
+#### 21.6.7 tutorial_docs_agent
+
+职责新增：
+
+- 编写 `docs/BOOT_ENTRY_INTEGRATION.md`。
+- 给出安全边界、实施顺序、回滚步骤和验证方法。
+- 允许描述配置目标和参数，不写未经验证的具体路由器点击路径。
+
+#### 21.6.8 security_audit_agent
+
+职责新增：
+
+- 审查 TFTP/ProxyDHCP 服务是否默认关闭。
+- 审查 bootfile 路径穿越、loader 替换、恶意镜像引导风险。
+- 审查 Web UI 是否把高风险开关做成显式确认。
+
+#### 21.6.9 git_audit_agent
+
+Phase 3 阶段收口 agent。
+
+职责新增：
+
+- 每完成 Phase 3 的一个可验证步骤后审查 diff 和验证记录。
+- 确认未把真实路由器账号、截图敏感信息、token、内网凭据写入仓库。
+- 确认 TFTP/ProxyDHCP/DHCP boot option 相关变更已经经过 `network_safety_agent` 与 `security_audit_agent` 审查。
+- 审计通过后自动创建本地 commit。
+- 记录 remote、branch、commit range、提交摘要和风险摘要。
+- `project_decision_agent` 确认符合项目方向后，自动 push 到当前 GitHub 分支。
+
+### 21.7 Phase 3 验证命令
+
+本地服务验证：
+
+```bash
+bash scripts/preflight/check-network-safety.sh
+docker compose config
+curl http://localhost:18080/boot/menu.ipxe
+curl http://localhost:18080/boot/loaders/ipxe.efi
+curl http://localhost:18080/api/boot-entry
+```
+
+网络验证：
+
+```text
+1. 普通终端重新获取 DHCP，确认网关仍为 192.168.1.4。
+2. 普通终端访问内网和互联网。
+3. 单台测试机选择 UEFI HTTP IPv4，确认进入 SynaBoot 菜单。
+4. 单台测试机选择 UEFI PXE IPv4，确认进入 SynaBoot 菜单。
+5. 如启用 IPv6，再分别验证 HTTP IPv6 和 PXE IPv6。
+6. 失败时撤销 boot option 或关闭 ProxyDHCP/TFTP，再验证普通终端恢复。
+```
+
+---
+
+## 22. 当前进度与后续开发队列
+
+更新时间：`2026-06-12`
+
+### 22.1 当前进度快照
+
+当前项目状态：
+
+- Phase 1/2 零侵入 HTTP/iPXE 平台已经具备基础代码与文档。
+- 默认仍只开放 `18080/tcp` HTTP 服务。
+- 当前没有启用 DHCP、ProxyDHCP、TFTP、Samba。
+- 当前没有开放 UDP `67/68/69/4011`。
+- `research_agent` 已加入前置调查流程。
+- `project_decision_agent` 已加入方向决策流程，仅在重大取舍或路线冲突时触发。
+- `boot_entry_agent` 已替代旧的 `pxe_agent` 概念，负责 HTTP Boot、PXE Boot、iPXE chainload。
+- `git_audit_agent` 已加入阶段收口流程，负责功能/milestone 完成后的 diff 审计、本地 commit 和自动 push 当前 GitHub 分支。
+- Phase 3 仍处于规划与前置调查阶段，尚未实现或启用自动 PXE 入口。
+
+当前已知限制：
+
+- 还未本地确认 TP-Link 设备准确型号、硬件版本和固件版本。
+- 还未确认 TL-ER6120T/TL-ER6120 是否完整支持 Option 66、Option 67、next-server、Vendor Class 或 Client Architecture 区分。
+- 还未实现 `/api/boot-entry`。
+- 还未实现 TFTP/ProxyDHCP 可选模块。
+- 还未实现 Web UI 中的“启动入口集成”页面。
+- 还未创建 `docs/BOOT_ENTRY_INTEGRATION.md`。
+
+### 22.2 下一阶段目标
+
+下一阶段的根本目标：
+
+```text
+让局域网内测试主机选择 UEFI: PXE IPv4 后，
+在不影响现有 DHCP、网关、DNS、路由、防火墙的前提下，
+进入 SynaBoot 镜像选择菜单。
+```
+
+优先开发顺序：
+
+1. Phase 3.0：前置调查
+   - 由 `research_agent` 调查并记录 TL-ER6120T/TL-ER6120 能力。
+   - 本地确认设备型号、硬件版本、固件版本。
+   - 输出 DHCP Option 66/67、next-server、Vendor Class 支持结论。
+   - 若证据不足或方案分歧，触发 `project_decision_agent` 决定继续调查、阻塞或进入备选路径。
+
+2. Phase 3.1：启动入口配置模型
+   - 由 `architecture_agent` 设计 boot entry 配置模型。
+   - 定义 `/api/boot-entry` 返回结构。
+   - 明确 HTTP Boot、PXE Boot、TFTP、ProxyDHCP 的启用状态和安全状态字段。
+
+3. Phase 3.2：Boot assets 管理
+   - 由 `boot_entry_agent` 设计 `ipxe.efi`、`snponly.efi`、`undionly.kpxe` 元数据。
+   - 只允许 boot loader 位于 `./data/boot/loaders`。
+   - 记录来源、校验值、架构、适用场景。
+
+4. Phase 3.3：受控 TFTP/ProxyDHCP 方案设计
+   - 仅在 TP-Link DHCP boot option 能力不足时进入。
+   - 是否进入该路径由 `project_decision_agent` 基于 `research_agent` 证据和安全审查结论决定。
+   - 默认关闭。
+   - 不得分配 IP。
+   - 不得修改网关、DNS、路由、防火墙。
+   - 必须先通过 `network_safety_agent` 和 `security_audit_agent`。
+
+5. Phase 3.4：Web UI 启动入口集成页
+   - 展示 HTTP IPv4、PXE IPv4、HTTP IPv6、PXE IPv6 状态。
+   - 展示要交给网络管理员的 boot server、bootfile、URL 参数。
+   - 明确风险、回滚步骤和验证步骤。
+
+6. Phase 3.5：文档与验证
+   - 新增 `docs/BOOT_ENTRY_INTEGRATION.md`。
+   - 更新 README/ADMIN_GUIDE/NETWORK_SAFETY。
+   - 单台测试机验证 UEFI PXE IPv4。
+   - 验证普通终端 DHCP、网关、内网和互联网不受影响。
+
+7. Phase 3.6：阶段收口
+   - `network_safety_agent` 复审。
+   - `security_audit_agent` 复审。
+   - `git_audit_agent` 审查 diff、验证记录和敏感信息。
+   - 审计通过后创建本地 commit。
+   - `project_decision_agent` 确认阶段方向后，由 `git_audit_agent` 自动 push 当前 GitHub 分支。
+
+### 22.3 GitHub 推送策略
+
+用户期望：
+
+- `git_audit_agent` 审计确认无问题后，自动 push 到 GitHub 当前分支。
+
+当前执行策略：
+
+- 远程 push 降级为版本控制收口动作，不再按 LAN 高风险操作处理。
+- `git_audit_agent` 审计 diff、secrets、危险脚本、无关文件和验证记录。
+- 涉及网络、Compose、脚本、启动入口或安全边界的变更，必须先通过 `network_safety_agent` 和/或 `security_audit_agent`。
+- `project_decision_agent` 确认阶段方向和推送范围后，`git_audit_agent` 自动 push 到 GitHub 当前分支。
+- 不得 push secrets、`.env`、真实凭据、未审查网络影响变更或无关文件。
+
+当前远程与分支：
+
+```text
+remote: origin git@github.com:Flashyuan/FlashPXE.git
+branch: codex/synaboot-phase1
+```
+
+---
+
+## 23. Subagents 协作模式与通信机制
+
+### 23.1 总体编排
+
+当前工作流采用“主控编排 + 专责 agent + 审计门禁”的模式。
+
+```text
+用户目标
+  → 主控 Codex 拆分任务与判断风险
+  → research_agent 调查外部事实
+  → project_decision_agent 仅在方向/优先级/重大取舍时决策
+  → network_safety_agent 审查网络边界
+  → architecture_agent 定义模型、接口、模块边界
+  → boot_entry_agent / storage_agent / webui_agent / image_factory_agent 分工实现
+  → tutorial_docs_agent 固化说明、图例、回滚和验证步骤
+  → security_audit_agent 审查安全风险
+  → git_audit_agent 审查 diff、创建本地 commit、自动 push 当前分支
+```
+
+### 23.2 通信机制
+
+subagents 之间不直接修改彼此输出。
+
+通信依赖以下共享工件：
+
+- `PLAN.md`：任务阶段、状态、下一步、验收标准。
+- `AGENTS.md`：最高安全边界和必需 agent 编排。
+- `.codex/agents/*.toml`：每个 agent 的职责、约束和输出要求。
+- `docs/*.md`：架构、安全、教程和验收结论。
+- `git diff`：阶段收口时的真实变更边界。
+- 审查结论：`APPROVED`、`BLOCKED`、`REQUIRES_DECISION`。
+- 决策结论：`APPROVED`、`APPROVED_WITH_CONDITIONS`、`BLOCKED`、`NEEDS_RESEARCH`。
+
+当某个 agent 遇到外部事实不确定时：
+
+```text
+对应 agent
+  → 提出明确问题
+  → research_agent 检索官方资料、文档、RFC、社区证据
+  → 返回事实、未知项、影响和建议
+  → 原 agent 基于证据继续设计
+```
+
+当某个 agent 遇到决策性问题时：
+
+```text
+对应 agent
+  → 汇总可选方案、风险、收益、验证要求
+  → 如有事实缺口，先交给 research_agent
+  → 如涉及 LAN 风险，先交给 network_safety_agent / security_audit_agent
+  → project_decision_agent 选择方向或标记 BLOCKED/NEEDS_RESEARCH
+  → 对应 agent 按决策继续推进
+```
+
+当某个变更可能影响 LAN 时：
+
+```text
+对应 agent
+  → 停止实施
+  → network_safety_agent 审查
+  → APPROVED 才能继续
+  → BLOCKED 则回到方案修正
+```
+
+当某个阶段完成时：
+
+```text
+实现完成
+  → 运行验证命令
+  → security_audit_agent / network_safety_agent 按风险复审
+  → git_audit_agent 审查 diff、敏感信息和验证记录
+  → project_decision_agent 确认阶段方向和推送范围
+  → 创建本地 commit
+  → 自动 push 当前 GitHub 分支
+```
+
+### 23.3 每个 Subagent 是否在工作流中工作
+
+当前 11 个必需 subagents 都已经纳入整体工作流。
+
+- `research_agent`：已纳入 Phase 3 前置调查门禁。
+- `project_decision_agent`：已纳入方向、优先级、重大取舍和阶段推送决策。
+- `network_safety_agent`：已纳入所有网络相关变更的前置和最终审查。
+- `architecture_agent`：已纳入 API、配置模型、服务边界和 milestone 拆分。
+- `boot_entry_agent`：已纳入 iPXE、HTTP Boot、PXE Boot、loader 和 chainload 设计。
+- `storage_agent`：已纳入镜像仓库、元数据、HTTP 静态服务和可选 Samba 边界。
+- `image_factory_agent`：已纳入 Ubuntu/Windows 镜像工厂任务框架。
+- `webui_agent`：已纳入 Dashboard、镜像管理、菜单预览、启动入口集成页。
+- `tutorial_docs_agent`：已纳入 README、架构图、Phase 3 集成文档和回滚教程。
+- `security_audit_agent`：已纳入代码、路径、权限、Docker、TFTP/ProxyDHCP 安全审计。
+- `git_audit_agent`：已纳入每个功能或 milestone 的阶段收口。
+
+注意：
+
+- 不是每个小改动都需要所有 subagents 同时参与。
+- 每个 milestone 必须明确哪些 agent 是必需参与者。
+- `project_decision_agent` 只在方向性、阶段性、冲突性、取舍性问题上触发。
+- 涉及网络启动、Compose、脚本、端口、路由器参数、安全边界时，`research_agent`、`network_safety_agent`、`security_audit_agent`、`git_audit_agent` 必须参与。
+- 普通 UI 或文档小修可以只经过相关实现 agent、必要审计 agent 和 `git_audit_agent`。
