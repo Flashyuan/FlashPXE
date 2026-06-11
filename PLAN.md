@@ -2039,6 +2039,7 @@ curl http://localhost:18080/api/boot-entry
 - 还未实现 TFTP/ProxyDHCP 可选模块。
 - Web UI 已新增“启动入口”只读展示页面。
 - `docs/BOOT_ENTRY_INTEGRATION.md` 已创建，只记录只读确认清单、参数边界、回滚原则和验证顺序；不包含路由器实操配置步骤。
+- `docs/BOOT_ENTRY_LOCAL_VERIFICATION.md` 已创建，作为管理员填写的本地只读设备能力确认模板；不包含路由器实操配置步骤。
 - 已收敛 Nginx `/boot/` 静态服务：只允许访问 `menu.ipxe` 与固定白名单
   loader 文件，其它 `/boot/` 路径返回 404，并启用 `disable_symlinks on`。
 
@@ -2094,6 +2095,7 @@ curl http://localhost:18080/api/boot-entry
    - 当前状态：BLOCKED，等待本地只读确认 TP-Link 准确型号、硬件版本、
      固件版本、Option 66/67、next-server、Vendor Class 和 Client
      Architecture 能力。
+   - 本地确认记录模板：`docs/BOOT_ENTRY_LOCAL_VERIFICATION.md`。
    - 默认关闭。
    - 不得分配 IP。
    - 不得修改网关、DNS、路由、防火墙。
@@ -2107,11 +2109,18 @@ curl http://localhost:18080/api/boot-entry
 
 6. Phase 3.5：文档与验证
    - 新增 `docs/BOOT_ENTRY_INTEGRATION.md`。
+   - 新增 `docs/BOOT_ENTRY_LOCAL_VERIFICATION.md`。
    - 更新 README/ADMIN_GUIDE/NETWORK_SAFETY。
    - 单台测试机验证 UEFI PXE IPv4。
    - 验证普通终端 DHCP、网关、内网和互联网不受影响。
    - 当前状态：已创建只读文档草案；真实测试机验证等待 Phase 3.3 门禁解除。
    - 本轮文档门禁同步验证记录：
+     - `bash scripts/preflight/check-network-safety.sh`
+     - `docker compose config`
+     - `ss -lntu | grep -E ':(67|68|69|4011)\b' || true`
+     - `rg -n "network_mode: host|privileged: true|67:|68:|69:|4011:|dnsmasq|proxydhcp|tftp|dhcp" docker-compose.yml scripts apps config docs PLAN.md README.md`
+     - `git diff --check`
+   - 本轮本地只读确认模板验证记录：
      - `bash scripts/preflight/check-network-safety.sh`
      - `docker compose config`
      - `ss -lntu | grep -E ':(67|68|69|4011)\b' || true`

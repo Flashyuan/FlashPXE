@@ -48,6 +48,8 @@ Phase 3.3 暂停，直到完成本地只读设备能力确认。
 
 不要保存配置，不要点击应用，不要修改 DHCP 地址池、DNS、网关或路由。
 
+建议把完整记录填写到 `BOOT_ENTRY_LOCAL_VERIFICATION.md`。
+
 ```text
 设备型号：
 硬件版本：
@@ -97,6 +99,7 @@ undionly.kpxe
 ## 推荐验证顺序
 
 1. 完成本地只读设备能力确认。
+   记录模板见 `BOOT_ENTRY_LOCAL_VERIFICATION.md`。
 2. 若设备能力足够，先由 `network_safety_agent` 审查 DHCP boot option 方案。
 3. 若方案通过，只在隔离测试环境或单台测试机验证。
 4. 抓包确认 DHCP Offer 中的 boot metadata 是否符合预期。
