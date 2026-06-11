@@ -36,9 +36,9 @@
 
       <section id="dashboard" class="view active">
         <div class="metrics">
-          <article><span>Web UI</span><strong>http://192.168.1.168:18080/</strong></article>
-          <article><span>iPXE 菜单</span><strong>/boot/menu.ipxe</strong></article>
-          <article><span>镜像仓库</span><strong>/images/</strong></article>
+          <article><span>Web UI</span><strong id="web-url">-</strong></article>
+          <article><span>iPXE 菜单</span><strong id="menu-url">-</strong></article>
+          <article><span>镜像仓库</span><strong id="images-url">-</strong></article>
           <article><span>启动就绪</span><strong id="ready-count">0</strong></article>
         </div>
         <div class="panel">
@@ -92,7 +92,7 @@
         <div class="panel split">
           <div>
             <h2>启动入口</h2>
-            <p class="mono">chain http://192.168.1.168:18080/boot/menu.ipxe</p>
+            <p class="mono" id="chain-command">chain -</p>
             <p>只有 present、ready、已启用的镜像会进入菜单。Windows ISO/WIM/ESD 默认通过 HotPE 访问安装。</p>
             <button id="generate-menu-button" class="primary admin-action">重新生成菜单</button>
           </div>
@@ -110,7 +110,7 @@ BCD
 boot.sdi
 boot.wim</pre>
           <p>进入 HotPE 后访问 Windows 镜像仓库：</p>
-          <p class="mono">http://192.168.1.168:18080/images/windows/</p>
+          <p class="mono" id="windows-images-url">-</p>
           <p>Samba 默认未启用；启用前必须重新通过网络安全审查。</p>
         </div>
       </section>
@@ -124,6 +124,12 @@ boot.wim</pre>
         <div class="panel">
           <h2>任务列表</h2>
           <div id="jobs-list" class="cards"></div>
+        </div>
+        <div class="panel">
+          <h2>任务详情</h2>
+          <div id="job-detail" class="job-detail">
+            <p>选择任务后查看状态、输出目录和事件日志。</p>
+          </div>
         </div>
       </section>
 

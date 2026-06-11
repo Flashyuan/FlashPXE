@@ -30,6 +30,7 @@ async function refresh() {
   document.querySelector("#menu-preview").textContent = menuText;
   applyAdminState();
   renderDashboard();
+  renderRuntimeUrls();
   renderImages();
   renderJobs();
   renderSafety();
@@ -66,6 +67,17 @@ function renderDashboard() {
       return `<article><span>${category}</span><strong>${count}</strong></article>`;
     })
     .join("");
+}
+
+function renderRuntimeUrls() {
+  const webUrl = safety.web_url || "/";
+  const menuUrl = safety.menu_url || "/boot/menu.ipxe";
+  const imagesUrl = safety.images_url || "/images/";
+  document.querySelector("#web-url").textContent = webUrl;
+  document.querySelector("#menu-url").textContent = menuUrl;
+  document.querySelector("#images-url").textContent = imagesUrl;
+  document.querySelector("#chain-command").textContent = `chain ${menuUrl}`;
+  document.querySelector("#windows-images-url").textContent = `${imagesUrl.replace(/\/$/, "")}/windows/`;
 }
 
 function renderImages() {
@@ -136,6 +148,9 @@ function renderImages() {
 function renderImageDetail(image) {
   const fields = [
     ["显示名", image.display_name || image.name],
+    ["版本", image.version || ""],
+    ["架构", image.architecture || ""],
+    ["描述", image.description || ""],
     ["相对路径", image.relative_path || image.rel_path],
     ["大小", formatSize(image.size_bytes)],
     ["SHA256", image.sha256 || ""],
@@ -146,9 +161,41 @@ function renderImageDetail(image) {
     ["菜单启用", image.menu_enabled ? "是" : "否"],
     ["首次缺失时间", image.missing_since || ""],
   ];
-  document.querySelector("#image-detail").innerHTML = fields
+  document.querySelector("#image-detail").innerHTML =
+    fields
     .map(([label, value]) => `<article><span>${escapeHtml(label)}</span><strong>${escapeHtml(String(value))}</strong></article>`)
-    .join("");
+      .join("") +
+    `<article class="metadata-editor">
+      <span>编辑元数据</span>
+      <label>显示名<input id="meta-display-name" value="${escapeAttr(image.display_name || image.name)}" /></label>
+      <label>版本<input id="meta-version" value="${escapeAttr(image.version || "")}" /></label>
+      <label>架构<input id="meta-architecture" value="${escapeAttr(image.architecture || "")}" /></label>
+      <label>描述<textarea id="meta-description" rows="4">${escapeHtml(image.description || "")}</textarea></label>
+      <button id="metadata-save-button" class="primary admin-action" data-id="${escapeAttr(image.id)}">保存元数据</button>
+    </article>`;
+  document.querySelector("#metadata-save-button").addEventListener("click", async (event) => {
+    if (!adminConfigured()) {
+      window.alert("未配置 SYNABOOT_ADMIN_TOKEN，元数据保存不可用。");
+      return;
+    }
+    const token = window.prompt("请输入管理员 token。");
+    if (!token) return;
+    const imageId = event.currentTarget.dataset.id;
+    const payload = {
+      display_name: document.querySelector("#meta-display-name").value,
+      version: document.querySelector("#meta-version").value,
+      architecture: document.querySelector("#meta-architecture").value,
+      description: document.querySelector("#meta-description").value,
+    };
+    try {
+      const updated = await postAdmin(`/api/images/${encodeURIComponent(imageId)}/metadata`, payload, token);
+      await refresh();
+      renderImageDetail(updated);
+    } catch (error) {
+      window.alert(`保存失败：${error.message}`);
+    }
+  });
+  applyAdminState();
 }
 
 function statusClass(value) {
@@ -166,9 +213,59 @@ function renderJobs() {
           <p><span class="badge">${escapeHtml(job.kind)}</span> <span class="badge">${escapeHtml(job.status)}</span></p>
           <p>${escapeHtml(job.note)}</p>
           <p class="mono">${escapeHtml(job.output_dir)}</p>
+          <button class="small job-detail-open" data-id="${escapeAttr(job.id)}">详情</button>
+          ${job.status === "draft" ? `<button class="small job-submit admin-action" data-id="${escapeAttr(job.id)}">提交待执行</button>` : ""}
+          ${["draft", "pending"].includes(job.status) ? `<button class="small job-cancel admin-action" data-id="${escapeAttr(job.id)}">取消</button>` : ""}
         </article>`,
       )
       .join("") || "<p>暂无任务。</p>";
+  document.querySelectorAll(".job-detail-open").forEach((button) =>
+    button.addEventListener("click", async () => {
+      try {
+        await renderJobDetail(button.dataset.id);
+      } catch (error) {
+        window.alert(`读取任务失败：${error.message}`);
+      }
+    }),
+  );
+  document.querySelectorAll(".job-submit, .job-cancel").forEach((button) =>
+    button.addEventListener("click", async () => {
+      if (!adminConfigured()) {
+        window.alert("未配置 SYNABOOT_ADMIN_TOKEN，任务状态变更不可用。");
+        return;
+      }
+      const token = window.prompt("请输入管理员 token。");
+      if (!token) return;
+      const action = button.classList.contains("job-submit") ? "submit" : "cancel";
+      try {
+        const job = await postAdmin(`/api/jobs/${encodeURIComponent(button.dataset.id)}/${action}`, {}, token);
+        await refresh();
+        await renderJobDetail(job.id);
+      } catch (error) {
+        window.alert(`任务更新失败：${error.message}`);
+      }
+    }),
+  );
+  applyAdminState();
+}
+
+async function renderJobDetail(jobId) {
+  const [job, eventsData] = await Promise.all([
+    fetchJson(`/api/jobs/${encodeURIComponent(jobId)}`),
+    fetchJson(`/api/jobs/${encodeURIComponent(jobId)}/events`),
+  ]);
+  const events = eventsData.events || [];
+  document.querySelector("#job-detail").innerHTML = `
+    <div class="detail-grid">
+      <article><span>任务 ID</span><strong>${escapeHtml(job.id)}</strong></article>
+      <article><span>类型</span><strong>${escapeHtml(job.kind)}</strong></article>
+      <article><span>状态</span><strong>${escapeHtml(job.status)}</strong></article>
+      <article><span>输出目录</span><strong>${escapeHtml(job.output_dir)}</strong></article>
+      <article><span>说明</span><strong>${escapeHtml(job.note)}</strong></article>
+    </div>
+    <h3>事件日志</h3>
+    <pre>${escapeHtml(events.map((event) => JSON.stringify(event)).join("\n") || "暂无事件。")}</pre>
+  `;
 }
 
 function renderSafety() {
@@ -187,6 +284,10 @@ function renderSafety() {
 
 function escapeHtml(value) {
   return value.replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[char]);
+}
+
+function escapeAttr(value) {
+  return escapeHtml(String(value));
 }
 
 function adminConfigured() {

@@ -197,12 +197,17 @@ button.small {
 }
 
 input,
-select {
+select,
+textarea {
   border: 1px solid var(--line);
   border-radius: 6px;
   padding: 10px 12px;
   min-height: 42px;
   background: #fff;
+}
+
+textarea {
+  resize: vertical;
 }
 
 input {
@@ -283,6 +288,29 @@ pre {
 .badge.warn {
   background: #fff0df;
   color: var(--warn);
+}
+
+.metadata-editor {
+  display: grid;
+  gap: 10px;
+}
+
+.metadata-editor label {
+  display: grid;
+  gap: 5px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.metadata-editor input,
+.metadata-editor textarea {
+  width: 100%;
+  color: var(--ink);
+}
+
+.job-detail h3 {
+  margin: 18px 0 10px;
+  font-size: 16px;
 }
 
 .warn {

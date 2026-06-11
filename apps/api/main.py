@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import hashlib
+import hmac
 import json
 import os
 import re
@@ -98,6 +99,8 @@ def ensure_image_columns(conn: sqlite3.Connection) -> None:
     columns = {row["name"] for row in conn.execute("PRAGMA table_info(images)")}
     migrations = {
         "display_name": "ALTER TABLE images ADD COLUMN display_name TEXT NOT NULL DEFAULT ''",
+        "version": "ALTER TABLE images ADD COLUMN version TEXT NOT NULL DEFAULT ''",
+        "architecture": "ALTER TABLE images ADD COLUMN architecture TEXT NOT NULL DEFAULT ''",
         "relative_path": "ALTER TABLE images ADD COLUMN relative_path TEXT NOT NULL DEFAULT ''",
         "mtime_ns": "ALTER TABLE images ADD COLUMN mtime_ns INTEGER NOT NULL DEFAULT 0",
         "sha256_cached": "ALTER TABLE images ADD COLUMN sha256_cached INTEGER NOT NULL DEFAULT 0",
@@ -371,6 +374,34 @@ def set_image_menu_enabled(image_id: str, enabled: bool) -> dict | None:
     return get_image(image_id)
 
 
+def set_image_metadata(image_id: str, payload: dict) -> dict | None:
+    conn = connect_db()
+    row = conn.execute("SELECT * FROM images WHERE id = ?", (image_id,)).fetchone()
+    if row is None:
+        conn.close()
+        return None
+    now = int(time.time())
+    display_name = safe_text(payload.get("display_name"), 80) or row["display_name"] or row["name"]
+    version = safe_text(payload.get("version"), 64)
+    architecture = safe_text(payload.get("architecture"), 32)
+    description = safe_text(payload.get("description"), 500)
+    conn.execute(
+        """
+        UPDATE images
+        SET display_name = ?,
+            version = ?,
+            architecture = ?,
+            description = ?,
+            updated_at = ?
+        WHERE id = ?
+        """,
+        (display_name, version, architecture, description, now, image_id),
+    )
+    conn.commit()
+    conn.close()
+    return get_image(image_id)
+
+
 def menu_rows(rows: list[dict] | None = None) -> list[dict]:
     if rows is not None:
         return rows
@@ -589,6 +620,96 @@ def list_jobs() -> list[dict]:
     return rows
 
 
+def get_job(job_id: str) -> dict | None:
+    conn = connect_db()
+    row = conn.execute("SELECT * FROM jobs WHERE id = ?", (job_id,)).fetchone()
+    conn.close()
+    if row is None:
+        return None
+    return dict(row)
+
+
+def job_output_path(job: dict) -> Path:
+    output_dir = job.get("output_dir", "")
+    root = BUILDS_DIR.resolve()
+    resolved = (DATA_DIR / output_dir).resolve()
+    if root not in resolved.parents and resolved != root:
+        raise ValueError("任务目录越界")
+    return resolved
+
+
+def append_job_event(job_id: str, event: str, payload: dict | None = None) -> None:
+    job = get_job(job_id)
+    if job is None:
+        return
+    try:
+        log_path = job_output_path(job) / "logs" / "events.jsonl"
+    except ValueError:
+        return
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    item = {"event": event, "job_id": job_id, "created_at": int(time.time())}
+    if payload:
+        item.update(payload)
+    with log_path.open("a", encoding="utf-8") as file:
+        file.write(json.dumps(item, ensure_ascii=False) + "\n")
+
+
+def list_job_events(job_id: str) -> list[dict] | None:
+    job = get_job(job_id)
+    if job is None:
+        return None
+    try:
+        log_path = job_output_path(job) / "logs" / "events.jsonl"
+    except ValueError:
+        return None
+    if not log_path.is_file():
+        return []
+    events: list[dict] = []
+    with log_path.open("r", encoding="utf-8") as file:
+        for line in file:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                item = json.loads(line)
+            except json.JSONDecodeError:
+                item = {"event": "invalid_log_line", "raw": line[:500]}
+            events.append(item)
+    return events[-200:]
+
+
+def update_job_status(job_id: str, target_status: str) -> dict | None:
+    allowed_transitions = {
+        "pending": {"draft"},
+        "canceled": {"draft", "pending"},
+    }
+    if target_status not in allowed_transitions:
+        return None
+    conn = connect_db()
+    row = conn.execute("SELECT * FROM jobs WHERE id = ?", (job_id,)).fetchone()
+    if row is None:
+        conn.close()
+        return None
+    if row["status"] not in allowed_transitions[target_status]:
+        conn.close()
+        return dict(row) | {"transition_error": f"{row['status']} -> {target_status}"}
+    try:
+        status_path = job_output_path(dict(row)) / "status.json"
+    except ValueError:
+        conn.close()
+        return None
+    now = int(time.time())
+    conn.execute(
+        "UPDATE jobs SET status = ?, updated_at = ? WHERE id = ?",
+        (target_status, now, job_id),
+    )
+    conn.commit()
+    conn.close()
+    status_path.write_text(json.dumps({"status": target_status, "updated_at": now}, ensure_ascii=False, indent=2), encoding="utf-8")
+    append_job_event(job_id, "status_changed", {"from": row["status"], "to": target_status})
+    return get_job(job_id)
+
+
 def create_job(payload: dict) -> dict:
     kind = payload.get("kind") if isinstance(payload, dict) else None
     kind = {
@@ -604,6 +725,7 @@ def create_job(payload: dict) -> dict:
     output_dir.mkdir(parents=True, exist_ok=False)
     (output_dir / "logs").mkdir(parents=True, exist_ok=True)
     (output_dir / "inputs").mkdir(parents=True, exist_ok=True)
+    (output_dir / "work").mkdir(parents=True, exist_ok=True)
     (output_dir / "output" / "artifacts").mkdir(parents=True, exist_ok=True)
     (output_dir / "package").mkdir(parents=True, exist_ok=True)
 
@@ -679,6 +801,17 @@ def safe_title(value: object, fallback: str) -> str:
     return normalized or fallback
 
 
+def safe_text(value: object, limit: int) -> str:
+    if not isinstance(value, str):
+        return ""
+    normalized = re.sub(r"[\x00-\x08\x0b\x0c\x0e-\x1f]+", " ", value).strip()
+    return normalized[:limit]
+
+
+def token_matches(provided: str, expected: str) -> bool:
+    return hmac.compare_digest(provided.encode("utf-8"), expected.encode("utf-8"))
+
+
 def windows_adk_readme(job_id: str) -> str:
     return f"""SynaBoot Windows ADK/DISM 外部构建任务包
 
@@ -716,6 +849,7 @@ def network_safety_status() -> dict:
         "server_ip": SERVER_IP,
         "http_port": SYNABOOT_PORT,
         "admin_configured": bool(ADMIN_TOKEN),
+        "web_url": f"http://{SERVER_IP}:{SYNABOOT_PORT}/",
         "menu_url": f"http://{SERVER_IP}:{SYNABOOT_PORT}/boot/menu.ipxe",
         "images_url": f"http://{SERVER_IP}:{SYNABOOT_PORT}/images/",
         "allowed": ["HTTP 18080/tcp", "Docker bridge network", "static /images", "static /boot", "API reverse proxy"],
@@ -736,7 +870,7 @@ class Handler(BaseHTTPRequestHandler):
             json_response(self, 403, {"error": "admin_actions_disabled"})
             return False
         provided = self.headers.get("X-SynaBoot-Admin-Token", "")
-        if provided != ADMIN_TOKEN:
+        if not token_matches(provided, ADMIN_TOKEN):
             json_response(self, 403, {"error": "invalid_admin_token"})
             return False
         return True
@@ -758,6 +892,20 @@ class Handler(BaseHTTPRequestHandler):
             text_response(self, 200, read_menu())
         elif path == "/api/jobs":
             json_response(self, 200, {"jobs": list_jobs()})
+        elif path.startswith("/api/jobs/") and path.endswith("/events"):
+            job_id = path.split("/")[-2]
+            events = list_job_events(job_id)
+            if events is None:
+                json_response(self, 404, {"error": "job_not_found"})
+            else:
+                json_response(self, 200, {"events": events})
+        elif path.startswith("/api/jobs/"):
+            job_id = path.rstrip("/").rsplit("/", 1)[-1]
+            job = get_job(job_id)
+            if job is None:
+                json_response(self, 404, {"error": "job_not_found"})
+            else:
+                json_response(self, 200, job)
         elif path in {"/api/network-safety", "/api/safety"}:
             json_response(self, 200, network_safety_status())
         else:
@@ -792,6 +940,18 @@ class Handler(BaseHTTPRequestHandler):
                 write_menu()
                 json_response(self, 200, image)
             return
+        if path.startswith("/api/images/") and path.endswith("/metadata"):
+            image_id = path.split("/")[-2]
+            payload = self.read_json_payload()
+            if payload is None:
+                return
+            image = set_image_metadata(image_id, payload)
+            if image is None:
+                json_response(self, 404, {"error": "image_not_found"})
+            else:
+                write_menu()
+                json_response(self, 200, image)
+            return
         if path in {
             "/api/jobs/ubuntu-autoinstall",
             "/api/jobs/ubuntu-autoinstall-template",
@@ -801,20 +961,40 @@ class Handler(BaseHTTPRequestHandler):
             kind = path.rsplit("/", 1)[-1]
             json_response(self, 201, create_job({"kind": kind}))
             return
+        if path.startswith("/api/jobs/") and path.endswith(("/submit", "/cancel")):
+            job_id = path.split("/")[-2]
+            target_status = "pending" if path.endswith("/submit") else "canceled"
+            job = update_job_status(job_id, target_status)
+            if job is None:
+                json_response(self, 404, {"error": "job_not_found_or_unsupported_transition"})
+            elif job.get("transition_error"):
+                json_response(self, 409, {"error": "invalid_transition", "detail": job["transition_error"], "job": job})
+            else:
+                json_response(self, 200, job)
+            return
         if path != "/api/jobs":
             json_response(self, 404, {"error": "not_found"})
             return
+        payload = self.read_json_payload()
+        if payload is None:
+            return
+        json_response(self, 201, create_job(payload))
+
+    def read_json_payload(self) -> dict | None:
         length = int(self.headers.get("Content-Length", "0"))
         if length > 65536:
             json_response(self, 413, {"error": "payload_too_large"})
-            return
+            return None
         raw = self.rfile.read(length) if length else b"{}"
         try:
             payload = json.loads(raw.decode("utf-8") or "{}")
         except json.JSONDecodeError:
             json_response(self, 400, {"error": "invalid_json"})
-            return
-        json_response(self, 201, create_job(payload))
+            return None
+        if not isinstance(payload, dict):
+            json_response(self, 400, {"error": "invalid_json_object"})
+            return None
+        return payload
 
     def log_message(self, fmt: str, *args: object) -> None:
         print(f"{self.address_string()} - {fmt % args}", flush=True)
