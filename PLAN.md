@@ -1560,7 +1560,7 @@ curl http://localhost:18080/boot/menu.ipxe
 
 ### Milestone 2.7：二期最终安全验收
 
-状态：进行中。
+状态：已完成。
 
 目标：
 
@@ -1579,8 +1579,19 @@ curl http://localhost:18080/boot/menu.ipxe
 验证记录：
 
 - `network_safety_agent` 终审：`APPROVED`。
-- `security_audit_agent` 复审：待本轮端口与教程收口后确认。
-- `git_audit_agent` 复审：待安全复审通过后执行。
+- `security_audit_agent` 复审：`APPROVED`。
+- `git_audit_agent` 复审：`APPROVED`，审查范围为 `origin/codex/synaboot-phase1..HEAD`。
+- `project_decision_agent` 推送决策：`APPROVED`。
+- 本地提交与远端同步：
+  - `9bde724 Enhance Phase 2 management workflows`
+  - `22cfcba Align subagent governance with SynaBoot plan`
+- 已 push 到 `origin/codex/synaboot-phase1`，本地与远端计数为 `0 0`。
+- 最终本地验证补充：
+  - `python3 -m py_compile apps/api/main.py apps/worker/scan_images.py`
+  - `node --check apps/web/assets/app.js`
+  - `bash scripts/preflight/check-network-safety.sh`
+  - `docker compose config`
+  - loopback API smoke test 覆盖镜像元数据和 Image Factory 任务状态流。
 - 此前本机 `8080/tcp` 已有监听，因此默认对外端口已迁移到 `18080/tcp`。本轮已使用默认端口完成验证：
 
 ```bash
