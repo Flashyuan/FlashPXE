@@ -1,37 +1,17 @@
 #!ipxe
 
 set server-ip 192.168.1.168
-set base-url http://${server-ip}:8080
+set base-url http://${server-ip}:18080
 set boot-url ${base-url}/boot
 set image-url ${base-url}/images
 
 :start
-menu SynaBoot Phase 1 - HTTP Boot
-item --gap --          === PE / Recovery ===
-item hotpe            HotPE via wimboot
-item --gap --          === Linux ===
-item ubuntu22043      Ubuntu 22.04.3 Live Server
-item --gap --          === Windows ===
-item windows_hotpe    Windows installation via HotPE
-item --gap --          === Tools ===
+menu SynaBoot Phase 2 - HTTP/iPXE Boot
+item --gap --          === No ready images ===
 item shell            iPXE shell
 item reboot           Reboot
-choose --default hotpe --timeout 15000 target && goto ${target} || goto start
-
-:hotpe
-echo HotPE files are not ready.
-echo Put wimboot, bootmgr, BCD, boot.sdi and boot.wim under ${image-url}/pe/hotpe/.
-goto start
-
-:ubuntu22043
-echo Ubuntu 22.04.3 files are not ready.
-echo Put ISO, casper/vmlinuz and casper/initrd under ${image-url}/linux/ubuntu-22.04.3/.
-goto start
-
-:windows_hotpe
-echo Windows ISO cannot be reliably installed directly by iPXE.
-echo Boot HotPE, then open ${image-url}/windows/.
-goto hotpe
+item poweroff         Power off
+choose --default shell --timeout 15000 target && goto ${target} || goto start
 
 :shell
 shell
@@ -39,6 +19,9 @@ goto start
 
 :reboot
 reboot
+
+:poweroff
+poweroff
 
 :boot_failed
 echo Boot failed. Press any key to return to menu.

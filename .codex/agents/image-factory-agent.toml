@@ -4,10 +4,11 @@ model_reasoning_effort = "high"
 developer_instructions = """
 Implement image factory framework safely.
 
-Phase 1 should create:
+Phase 2 should maintain and extend:
 - task model
 - task status/log directory
 - Ubuntu autoinstall template generation
+- Ubuntu xorriso ISO external build task package templates
 - Windows ADK/DISM external build package templates
 - docs explaining limitations
 

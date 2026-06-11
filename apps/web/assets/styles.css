@@ -129,6 +129,11 @@ button {
   cursor: pointer;
 }
 
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
 button.small {
   display: block;
   margin-top: 8px;
@@ -147,6 +152,7 @@ button.small {
 .metrics,
 .summary-grid,
 .safety-grid,
+.detail-grid,
 .cards {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
@@ -157,6 +163,7 @@ button.small {
 .panel,
 .summary-grid article,
 .safety-grid article,
+.detail-grid article,
 .cards article {
   background: var(--panel);
   border: 1px solid var(--line);
@@ -166,7 +173,8 @@ button.small {
 
 .metrics span,
 .summary-grid span,
-.safety-grid span {
+.safety-grid span,
+.detail-grid span {
   display: block;
   color: var(--muted);
   font-size: 13px;
@@ -264,6 +272,17 @@ pre {
   background: var(--soft);
   color: var(--accent-strong);
   font-size: 12px;
+  margin: 1px 2px 1px 0;
+}
+
+.badge.ok {
+  background: #e4f4ea;
+  color: #17633a;
+}
+
+.badge.warn {
+  background: #fff0df;
+  color: var(--warn);
 }
 
 .warn {

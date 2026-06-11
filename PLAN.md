@@ -94,7 +94,7 @@ SynaBoot = iPXE HTTP Boot 平台 + 镜像仓库 + HotPE 集成 + Windows/Linux �
   ↓
 选择 U 盘或 iPXE 启动项
   ↓
-iPXE 自动访问 http://<SYNABOOT_SERVER_IP>:8080/boot/menu.ipxe
+iPXE 自动访问 http://<SYNABOOT_SERVER_IP>:18080/boot/menu.ipxe
   ↓
 显示 SynaBoot 菜单
   ↓
@@ -108,7 +108,7 @@ iPXE 自动访问 http://<SYNABOOT_SERVER_IP>:8080/boot/menu.ipxe
   ↓
 进入 UEFI HTTP Boot
   ↓
-输入或选择 http://<SYNABOOT_SERVER_IP>:8080/boot/ipxe.efi 或 menu.ipxe
+输入或选择 http://<SYNABOOT_SERVER_IP>:18080/boot/ipxe.efi 或 menu.ipxe
   ↓
 进入菜单
 ```
@@ -160,9 +160,9 @@ Images are managed by SynaBoot Web UI.
 - 局域网网段：`192.168.1.0/24`
 - SynaBoot 服务 IP：由管理员指定，例如 `192.168.1.168` 或其他固定 IP
 - 访问方式：
-  - Web UI：`http://<SERVER_IP>:8080`
-  - 镜像 HTTP 仓库：`http://<SERVER_IP>:8080/images/`
-  - iPXE 菜单：`http://<SERVER_IP>:8080/boot/menu.ipxe`
+  - Web UI：`http://<SERVER_IP>:18080`
+  - 镜像 HTTP 仓库：`http://<SERVER_IP>:18080/images/`
+  - iPXE 菜单：`http://<SERVER_IP>:18080/boot/menu.ipxe`
   - Samba 共享（可选）：`\\<SERVER_IP>\images`
 
 ---
@@ -299,7 +299,7 @@ synaboot/
 #!ipxe
 
 set server_ip ${next-server}
-set base-url http://192.168.1.168:8080
+set base-url http://192.168.1.168:18080
 
 :start
 menu SynaBoot v1.0 - Internal OS Deployment Platform
@@ -331,7 +331,7 @@ boot
 
 :win11
 echo Windows ISO should be installed from HotPE.
-echo Boot HotPE, then open \\192.168.1.168\images or http://192.168.1.168:8080/images/windows/
+echo Boot HotPE, then open \\192.168.1.168\images or http://192.168.1.168:18080/images/windows/
 goto hotpe
 
 :reboot
@@ -385,7 +385,7 @@ Z:\windows\win11\sources\install.wim
 访问：
 
 ```text
-http://192.168.1.168:8080/images/windows/
+http://192.168.1.168:18080/images/windows/
 ```
 
 HotPE 中可用浏览器或下载工具打开。
@@ -511,7 +511,7 @@ data/images/linux/ubuntu-22.04.3/
 - 不运行 DHCP/TFTP 服务。
 - 所有端口必须由 `network_safety_agent` 审查。
 - 默认只开放：
-  - `8080:8080/tcp` Web/HTTP 镜像服务
+  - `18080:8080/tcp` Web/HTTP 镜像服务
   - 可选 `8443:8443/tcp` HTTPS
   - 可选 Samba 端口，必须 preflight 后才允许
 
@@ -544,7 +544,7 @@ nginx + api + sqlite + worker
 - 默认网关。
 - DNS。
 - 当前监听端口。
-- 是否已有服务占用 8080。
+- 是否已有服务占用对外 HTTP 端口，默认 `18080/tcp`。
 - 是否已有服务占用 445/139/137/138。
 - 是否存在 DHCP/TFTP 端口监听。
 - Docker Compose 是否包含禁止项。
@@ -679,7 +679,7 @@ Codex 官方支持通过 `.codex/agents/*.toml` 定义 project-scoped custom age
 目标：
 
 - Docker Compose 启动 Nginx。
-- 只开放 8080 TCP。
+- 只开放 `18080/tcp` 对外 HTTP 服务。
 - 映射 `./data/images` 为 HTTP 静态目录。
 - 提供 `/images/` 浏览。
 - 提供 `/boot/menu.ipxe` 静态样例。
@@ -687,9 +687,9 @@ Codex 官方支持通过 `.codex/agents/*.toml` 定义 project-scoped custom age
 验收：
 
 ```bash
-curl http://localhost:8080/
-curl http://localhost:8080/boot/menu.ipxe
-curl http://localhost:8080/images/
+curl http://localhost:18080/
+curl http://localhost:18080/boot/menu.ipxe
+curl http://localhost:18080/images/
 ```
 
 不得：
@@ -710,7 +710,7 @@ curl http://localhost:8080/images/
 验收：
 
 ```bash
-curl http://localhost:8080/api/images
+curl http://localhost:18080/api/images
 ```
 
 ## Milestone 3：动态 iPXE 菜单
@@ -726,7 +726,7 @@ curl http://localhost:8080/api/images
 验收：
 
 ```bash
-curl http://localhost:8080/boot/menu.ipxe
+curl http://localhost:18080/boot/menu.ipxe
 ```
 
 ## Milestone 4：HotPE 镜像访问
@@ -758,7 +758,7 @@ curl http://localhost:8080/boot/menu.ipxe
 
 验收：
 
-- 浏览器访问 `http://<SERVER_IP>:8080` 可用。
+- 浏览器访问 `http://<SERVER_IP>:18080` 可用。
 - 不需要公网。
 - 不依赖外部 CDN。
 
@@ -900,3 +900,681 @@ data/images/tools/
 - Windows ISO 可通过 HotPE 访问安装。
 - 镜像制作工厂有任务框架和模板。
 - 有完整安全审查文档。
+
+---
+
+## 14. 二期开发前提
+
+二期开发在一期已经完工的基础上继续推进。
+
+一期已完成的基础能力包括：
+
+- Docker Compose 友好的基础服务骨架。
+- HTTP 镜像仓库。
+- `/boot/menu.ipxe` iPXE 菜单入口。
+- `/images/` 静态镜像访问入口。
+- 基础 Web UI。
+- 基础 API/Worker 框架。
+- `data/images`、`data/boot`、`data/metadata`、`data/builds` 等数据目录。
+- 网络安全 preflight 检查。
+- `.codex/agents` 项目级 subagents 基础定义。
+
+二期不得推翻一期安全边界。
+
+二期目标是把一期基础平台增强为可实际部署、可扫描镜像、可生成菜单、可教学交付的零侵入 HTTP/iPXE Boot 平台。
+
+后续二期代码开发必须通过 `/goal` 启动，并按本 `PLAN.md` 的二期进度执行。
+
+---
+
+## 15. 二期网络安全模型
+
+二期继续采用零侵入网络模型。
+
+默认服务地址：
+
+```text
+SERVER_IP=192.168.1.168
+Web UI=http://192.168.1.168:18080/
+镜像仓库=http://192.168.1.168:18080/images/
+iPXE 菜单=http://192.168.1.168:18080/boot/menu.ipxe
+```
+
+二期允许的启动方式：
+
+1. iPXE USB/ISO/EFI 启动介质。
+2. 手动 UEFI HTTP Boot。
+3. 外部管理员已经配置好的 PXE/iPXE chain 入口。
+
+第三种只表示 SynaBoot 提供 HTTP 菜单 URL：
+
+```text
+http://192.168.1.168:18080/boot/menu.ipxe
+```
+
+SynaBoot 本身不配置、不修改、不接管外部 PXE 环境。
+
+二期明确不做：
+
+- 普通 PXE 自动发现。
+- DHCP Server。
+- ProxyDHCP。
+- TFTP。
+- 路由器 DHCP Option 66/67 配置。
+- OpenWrt、TP-Link、交换机、AP、VLAN、DNS、路由、防火墙配置。
+- 跨网段 PXE/DHCP Relay。
+- Docker `network_mode: host`。
+- Docker `privileged: true`。
+- UDP 67/68/69/4011 端口开放。
+
+任何涉及端口、Compose 网络、Samba、HTTP 监听地址、PXE 文档表述的变更，都必须先由 `network_safety_agent` 审查。
+
+---
+
+## 16. 二期 Subagents 编排
+
+二期开发必须开启 subagents 模式。
+
+所有 subagent 输出都必须包含：
+
+- `APPROVED` 或 `BLOCKED` 结论。
+- 关键假设。
+- 涉及文件或模块。
+- 风险点。
+- 建议验证命令。
+
+冲突处理规则：
+
+- `network_safety_agent` 与 `security_audit_agent` 优先级最高。
+- 只要网络安全或安全审计输出 `BLOCKED`，相关开发必须停止。
+- 其他 agent 的方案不得绕过安全 agent 的限制。
+
+### 16.1 network_safety_agent
+
+前置审查 agent。
+
+职责：
+
+- 审查所有网络相关计划、代码、Compose、脚本、文档。
+- 审查 Samba 是否仍为默认关闭。
+- 审查是否存在 DHCP/ProxyDHCP/TFTP/UDP 67/68/69/4011。
+- 审查是否存在 host network、privileged、危险挂载、路由/防火墙命令。
+
+### 16.2 architecture_agent
+
+架构统筹 agent。
+
+职责：
+
+- 基于一期已完成代码继续拆分二期模块。
+- 定义 API、元数据、任务状态、菜单生成的数据流。
+- 保持现有轻量架构，不在二期强行迁移 FastAPI/React/Vue。
+
+### 16.3 storage_agent
+
+镜像仓库 agent。
+
+职责：
+
+- 设计并实现 `data/images` 本地扫描。
+- 维护镜像元数据。
+- 维护 SHA256 缓存。
+- 判断镜像启动就绪状态。
+- 拒绝路径穿越、绝对路径、软链接越界。
+
+### 16.4 pxe_agent
+
+HTTP/iPXE agent。
+
+职责：
+
+- 设计元数据驱动的 `menu.ipxe`。
+- 只生成 HTTP/iPXE 菜单。
+- 支持 HotPE、Ubuntu/Linux、Tools。
+- Windows ISO/WIM 只生成 HotPE 辅助安装说明，不伪装成通用直接启动。
+- 保留 `shell`、`reboot`、`poweroff`、`boot_failed` 等安全入口。
+
+### 16.5 webui_agent
+
+Web UI agent。
+
+职责：
+
+- 沿用现有轻量静态 Web。
+- 不引入外部 CDN。
+- 不引入新前端框架。
+- 实现 Dashboard、镜像仓库、镜像详情、菜单预览、HotPE 指南、构建任务、网络安全页。
+- 所有写操作必须通过 admin token。
+
+### 16.6 image_factory_agent
+
+镜像工厂 agent。
+
+职责：
+
+- 设计 Ubuntu autoinstall 模板任务。
+- 设计 Ubuntu ISO 重打包任务。
+- 设计 Windows ADK/DISM 外部构建任务包。
+- 不在 Linux 容器内承诺完整封装 Windows ISO。
+- 不执行真实磁盘格式化、分区、写盘。
+
+### 16.7 tutorial_docs_agent
+
+二期新增文档 agent。
+
+需要新增定义文件：
+
+```text
+.codex/agents/tutorial-docs-agent.toml
+```
+
+职责：
+
+- 梳理项目框架和架构说明书。
+- 产出总体架构图、启动链路图、镜像扫描流程图、菜单生成流程图、任务状态图、subagents 协作图。
+- 产出对外教学用 `README.md`。
+- 将 network safety 和 security audit 的结论固化进文档。
+
+禁止：
+
+- 不得写 DHCP/ProxyDHCP/TFTP 配置教程。
+- 不得写路由器、OpenWrt、TP-Link、交换机、AP、VLAN、防火墙修改步骤。
+- 不得暗示 SynaBoot 能在零侵入模式下自动接管普通 PXE 客户端。
+- 不得包含真实 token、真实账号密码或敏感内网信息。
+
+### 16.8 security_audit_agent
+
+最终安全审计 agent。
+
+职责：
+
+- 审查路径穿越、命令注入、权限绕过、日志泄露、token 暴露。
+- 审查 Docker Compose 安全。
+- 审查文档是否存在危险网络操作指引。
+- 与 `network_safety_agent` 一起完成二期最终验收。
+
+### 16.9 git_audit_agent
+
+提交前审查 agent。
+
+职责：
+
+- 审查 git diff。
+- 确认无无关文件、无秘密信息、无危险网络变更。
+- 每个版本提交前输出审查结论。
+- push 远程前必须等待用户明确确认。
+
+---
+
+## 17. 二期核心功能计划
+
+### 17.1 镜像扫描与元数据
+
+二期采用“本地放置镜像 + Web/API 扫描登记”模式。
+
+不做浏览器大文件上传。
+
+镜像统一放入：
+
+```text
+./data/images/
+```
+
+扫描规则：
+
+- 只扫描 `data/images` 内部文件。
+- 拒绝绝对路径。
+- 拒绝 `..` 路径穿越。
+- 跳过软链接。
+- 跳过隐藏临时文件。
+- 按 `relative_path + size_bytes + mtime_ns` 判断 SHA256 是否可复用。
+- 文件变化时重新分块计算 SHA256。
+
+元数据至少包含：
+
+- `id`
+- `display_name`
+- `category`
+- `kind`
+- `relative_path`
+- `size_bytes`
+- `mtime_ns`
+- `sha256`
+- `scan_status`
+- `boot_method`
+- `boot_readiness`
+- `menu_enabled`
+- `description`
+- `updated_at`
+
+启动就绪状态：
+
+- `ready`：可进入 iPXE 菜单。
+- `incomplete`：缺少启动依赖。
+- `needs_hotpe`：需要先启动 HotPE。
+- `unsupported`：可存储/下载，但不生成启动项。
+- `missing`：元数据存在，但文件已不存在。
+
+### 17.2 动态 iPXE 菜单
+
+`menu.ipxe` 必须由元数据生成。
+
+进入菜单的条件：
+
+```text
+menu_enabled=true
+boot_readiness=ready
+```
+
+菜单必须支持：
+
+- PE / Recovery。
+- Windows via HotPE。
+- Linux。
+- Tools。
+- Reboot。
+- Poweroff。
+- iPXE Shell。
+- Boot failed fallback。
+
+Windows 镜像处理规则：
+
+- Windows ISO/WIM/ESD 默认标记为 `needs_hotpe`。
+- 菜单中不得把 Windows ISO 伪装成可原生直接启动。
+- UI 和 README 必须说明：先进入 HotPE，再通过 HTTP 或可选 Samba 访问 Windows 镜像。
+
+Ubuntu/Linux 处理规则：
+
+- 必须同时具备 kernel、initrd、ISO URL 等必要资源才可标记 `ready`。
+- 缺少 `vmlinuz`、`initrd` 或 ISO 时标记为 `incomplete`。
+
+### 17.3 Web UI
+
+二期 Web UI 页面：
+
+- Dashboard：
+  - 服务地址。
+  - 菜单地址。
+  - 镜像数量。
+  - 启动就绪数量。
+  - 网络安全状态。
+
+- 镜像仓库：
+  - 扫描结果。
+  - 分类筛选。
+  - SHA256。
+  - 启动就绪状态。
+  - 菜单启用/禁用。
+
+- 镜像详情：
+  - 路径。
+  - 大小。
+  - SHA256。
+  - 启动方式。
+  - 缺失依赖提示。
+
+- iPXE 菜单预览：
+  - 查看当前 `menu.ipxe`。
+  - 受保护重新生成菜单。
+
+- HotPE 指南：
+  - 说明 Windows ISO/WIM 通过 HotPE 安装。
+  - 提供 HTTP 镜像访问地址。
+  - Samba 只作为可选项说明。
+
+- 构建任务：
+  - Ubuntu autoinstall 模板任务。
+  - Ubuntu ISO 任务。
+  - Windows ADK 外部任务包。
+
+- 网络安全：
+  - 明确显示禁止项。
+  - 明确 SynaBoot 不配置 DHCP/ProxyDHCP/TFTP/路由器/防火墙。
+
+### 17.4 API 权限边界
+
+可公开只读：
+
+- `GET /api/health`
+- `GET /api/images`
+- `GET /api/images/<id>`
+- `GET /api/menu`
+- `GET /api/jobs`
+- `GET /api/network-safety`
+- `GET /images/`
+- `GET /boot/menu.ipxe`
+
+必须 admin token 保护：
+
+- `POST /api/scan`
+- `POST /api/menu/generate`
+- 镜像登记。
+- 镜像编辑。
+- 镜像启用/禁用。
+- 构建任务创建。
+- 构建任务取消。
+- 构建任务重试。
+- 任何写入 `data/metadata`、`data/boot`、`data/builds` 的操作。
+
+### 17.5 可选 Samba
+
+二期可以保留 Samba 可选能力规划。
+
+默认要求：
+
+- 默认关闭。
+- 不随 `docker compose up -d` 自动启动。
+- 只能通过独立 profile 或明确命令启用。
+- 启用前必须运行 preflight。
+- 启用前必须由 `network_safety_agent` 审查。
+- 只读共享 `data/images`。
+- 不允许匿名写入。
+- 不使用 host network。
+- 不使用 privileged。
+
+### 17.6 Image Factory
+
+二期支持任务框架增强。
+
+任务类型：
+
+- `ubuntu-autoinstall-template`
+- `ubuntu-xorriso-iso`
+- `windows-adk-package`
+
+任务目录：
+
+```text
+data/builds/<job-id>/
+├── job.json
+├── status.json
+├── logs/
+│   └── events.jsonl
+├── inputs/
+├── work/
+├── package/
+└── output/
+    └── artifacts/
+```
+
+任务状态：
+
+```text
+draft -> pending -> running -> success
+draft -> pending -> running -> failed
+draft -> pending -> canceled
+```
+
+安全要求：
+
+- 创建任务默认进入 `draft`。
+- 执行任务必须 admin token 确认。
+- Ubuntu autoinstall 默认不生成 `storage:` 自动分区配置。
+- 不执行 `mkfs`、`parted`、`dd` 到真实设备。
+- 不接受真实块设备路径作为目标。
+- Windows ADK/DISM 只生成外部 Windows 构建机任务包。
+- 日志不得记录 token、密码、私钥。
+
+### 17.7 教程与 README
+
+二期必须产出可对外教学的 `README.md`。
+
+README 必须覆盖：
+
+- SynaBoot 是什么。
+- 零侵入网络边界。
+- 部署前提。
+- `.env` 配置。
+- `SERVER_IP=192.168.1.168` 示例。
+- Docker Compose 启动。
+- 放置镜像到 `data/images`。
+- Web UI 扫描镜像。
+- 生成 iPXE 菜单。
+- iPXE USB/ISO/EFI 使用方式。
+- 手动 UEFI HTTP Boot 使用方式。
+- HotPE 访问 Windows 镜像。
+- Ubuntu/Linux 启动说明。
+- 常见问题。
+- 安全禁止项。
+
+README 必须避免：
+
+- 不得写“开箱即用自动接管 PXE”。
+- 不得写路由器 DHCP Option 66/67 操作教程。
+- 不得写 OpenWrt、TP-Link、交换机、AP 配置步骤。
+- 不得建议开放 UDP 67/68/69/4011。
+- 不得使用公网 CDN、SaaS 上传、第三方镜像托管。
+
+---
+
+## 18. 二期 Milestones
+
+### Milestone 2.0：二期计划同步
+
+状态：已完成。
+
+目标：
+
+- 将二期计划写入 `PLAN.md`。
+- 明确一期已完工后的二期开发前提。
+- 明确后续使用 `/goal` 和 subagents 模式开发。
+
+验收：
+
+- `PLAN.md` 包含二期网络模型、subagents 编排、功能计划、测试验收。
+- 用户确认后才开始二期代码实现。
+
+### Milestone 2.1：网络安全复核
+
+状态：已完成。
+
+目标：
+
+- `network_safety_agent` 审查二期计划。
+- 复核 Compose、脚本、文档是否仍符合零侵入模型。
+
+验收：
+
+- 网络审查输出 `APPROVED`。
+- 无 DHCP/ProxyDHCP/TFTP/UDP 67/68/69/4011。
+- 无 host network、privileged、危险挂载。
+
+### Milestone 2.2：镜像扫描与元数据
+
+状态：已完成。
+
+目标：
+
+- 实现 `data/images` 安全扫描。
+- 实现 SHA256 缓存。
+- 实现镜像元数据读写。
+- 实现启动就绪状态判断。
+
+验收：
+
+```bash
+curl http://localhost:18080/api/images
+```
+
+返回镜像列表、分类、SHA256、状态、菜单启用字段。
+
+### Milestone 2.3：动态菜单生成
+
+状态：已完成。
+
+目标：
+
+- 根据元数据生成 `data/boot/menu.ipxe`。
+- 只把 `menu_enabled=true` 且 `boot_readiness=ready` 的条目写入菜单。
+- 支持 HotPE、Linux、Tools。
+- Windows via HotPE 明确提示。
+
+验收：
+
+```bash
+curl http://localhost:18080/boot/menu.ipxe
+```
+
+可看到按当前镜像生成的菜单。
+
+### Milestone 2.4：Web UI 增强
+
+状态：已完成。
+
+目标：
+
+- Dashboard。
+- 镜像仓库。
+- 镜像详情。
+- 菜单预览。
+- HotPE 指南。
+- 构建任务页。
+- 网络安全页。
+
+验收：
+
+- 不依赖外部 CDN。
+- 未配置 admin token 时写操作不可用。
+- 状态显示清楚区分 `boot_readiness` 和 `menu_enabled`。
+
+### Milestone 2.5：Image Factory 增强
+
+状态：已完成。
+
+目标：
+
+- Ubuntu autoinstall 模板任务。
+- Ubuntu ISO 任务。
+- Windows ADK 外部任务包。
+- 任务状态、日志、输出目录。
+
+验收：
+
+- 能创建 draft 任务。
+- 能生成任务目录和配置文件。
+- 不执行真实磁盘破坏性操作。
+
+### Milestone 2.6：教程与架构文档
+
+状态：已完成。
+
+目标：
+
+- 新增 `tutorial_docs_agent` 定义。
+- 产出对外 `README.md`。
+- 产出架构说明和图例。
+
+验收：
+
+- README 能指导完成部署、放镜像、扫描、进入菜单、选择镜像。
+- 文档不包含危险网络配置步骤。
+- 图例能说明服务拓扑、启动链路、镜像扫描、菜单生成、subagents 协作。
+
+### Milestone 2.7：二期最终安全验收
+
+状态：进行中。
+
+目标：
+
+- `network_safety_agent` 终审。
+- `security_audit_agent` 终审。
+- `git_audit_agent` 提交前审查。
+
+验收：
+
+- 所有审查均为 `APPROVED`。
+- 所有 BLOCKED 项已修复。
+- 用户明确确认后才 push 远程。
+
+验证记录：
+
+- `network_safety_agent` 终审：`APPROVED`。
+- `security_audit_agent` 复审：待本轮端口与教程收口后确认。
+- `git_audit_agent` 复审：待安全复审通过后执行。
+- 此前本机 `8080/tcp` 已有监听，因此默认对外端口已迁移到 `18080/tcp`。本轮已使用默认端口完成验证：
+
+```bash
+docker compose up -d --build
+curl http://localhost:18080/
+curl http://localhost:18080/boot/menu.ipxe
+curl http://localhost:18080/images/
+curl http://localhost:18080/api/network-safety
+docker compose down
+```
+
+结果：
+
+- Web UI 可访问。
+- `/boot/menu.ipxe` 返回 Phase 2 安全空菜单。
+- `/images/` 可访问。
+- `/api/network-safety` 返回 JSON，确认 `menu_url` 与 `images_url` 使用 `18080/tcp`。
+- 验证后已执行 `docker compose down`。
+
+---
+
+## 19. 二期验证命令
+
+优先使用本地安全命令。
+
+```bash
+bash scripts/preflight/check-network-safety.sh
+docker compose config
+python -m compileall apps
+bash -n scripts/preflight/check-network-safety.sh
+curl http://localhost:18080/
+curl http://localhost:18080/boot/menu.ipxe
+curl http://localhost:18080/images/
+curl http://localhost:18080/api/images
+```
+
+如需启动服务验证：
+
+```bash
+docker compose up -d
+curl http://localhost:18080/
+curl http://localhost:18080/boot/menu.ipxe
+curl http://localhost:18080/images/
+docker compose down
+```
+
+若默认对外端口已被宿主机其他服务占用，只允许使用 `.env` 调整 HTTP TCP 端口或使用 loopback 测试映射。
+
+不得通过修改防火墙、路由、网关、DNS、DHCP 或交换机配置来规避端口冲突。
+
+---
+
+## 20. 二期 Goal Mode 启动提示
+
+二期开工时使用新的 `/goal`。
+
+推荐提示：
+
+```text
+/goal SERVER_IP 是 192.168.1.168。当前 SynaBoot 一期已完工，请严格按 PLAN.md 的二期计划继续开发。
+
+必须开启 subagents 模式，并使用 .codex/agents 中定义的 agents：
+1. 所有网络相关变更先由 network_safety_agent 审查。
+2. architecture_agent 负责二期架构和接口契约。
+3. storage_agent 实现 data/images 扫描、元数据和 SHA256 缓存。
+4. pxe_agent 实现 HTTP-only iPXE 动态菜单，严禁 DHCP/ProxyDHCP/TFTP。
+5. webui_agent 实现二期 Web UI 页面，不依赖 CDN。
+6. image_factory_agent 实现安全的镜像工厂任务框架。
+7. tutorial_docs_agent 负责架构说明书、图例和对外 README。
+8. security_audit_agent 和 network_safety_agent 做最终审查。
+9. git_audit_agent 在提交前审查 diff。
+
+强制安全要求：
+- 不得启用 DHCP。
+- 不得启用 ProxyDHCP。
+- 不得启用 TFTP。
+- 不得修改路由器、OpenWrt、TP-Link、交换机、AP、VLAN、DNS、路由、防火墙。
+- 不得使用 host network。
+- 不得使用 privileged 容器。
+- 不得开放 UDP 67/68/69/4011。
+- 不得挂载宿主 /、/etc、/var/run/docker.sock。
+- 不得上传内部 ISO/镜像到公网 SaaS。
+- 不确定是否影响局域网通信时，必须停止并标记 BLOCKED。
+
+开发顺序必须按 PLAN.md 二期 Milestones 2.1 到 2.7 推进。
+每完成一个 milestone，先更新 PLAN.md 进度，再继续下一步。
+```

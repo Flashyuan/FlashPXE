@@ -5,7 +5,7 @@ services:
     environment:
       SERVER_IP: ${SERVER_IP:-192.168.1.168}
       SYNABOOT_DATA_DIR: /srv/synaboot/data
-      SYNABOOT_PORT: ${SYNABOOT_HTTP_PORT:-8080}
+      SYNABOOT_PORT: ${SYNABOOT_HTTP_PORT:-18080}
       SYNABOOT_ADMIN_TOKEN: ${SYNABOOT_ADMIN_TOKEN:-}
     volumes:
       - ./data:/srv/synaboot/data
@@ -18,7 +18,7 @@ services:
     depends_on:
       - synaboot-api
     ports:
-      - "${SYNABOOT_HTTP_BIND:-8080}:8080/tcp"
+      - "${SYNABOOT_HTTP_BIND:-18080}:8080/tcp"
     volumes:
       - ./config/nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
       - ./apps/web:/usr/share/nginx/html:ro

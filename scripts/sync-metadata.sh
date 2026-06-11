@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-API_URL="${SYNABOOT_SCAN_URL:-http://localhost:8080/api/scan}"
+SYNABOOT_HTTP_PORT="${SYNABOOT_HTTP_PORT:-18080}"
+API_URL="${SYNABOOT_SCAN_URL:-http://localhost:${SYNABOOT_HTTP_PORT}/api/scan}"
 ADMIN_TOKEN="${SYNABOOT_ADMIN_TOKEN:-}"
 
 if [[ -z "$ADMIN_TOKEN" ]]; then

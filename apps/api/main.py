@@ -8,10 +8,10 @@ import time
 import uuid
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import urlparse
+from urllib.parse import quote, urlparse
 
 SERVER_IP = os.environ.get("SERVER_IP", "192.168.1.168")
-SYNABOOT_PORT = int(os.environ.get("SYNABOOT_PORT", "8080"))
+SYNABOOT_PORT = int(os.environ.get("SYNABOOT_PORT", "18080"))
 API_HOST = os.environ.get("SYNABOOT_API_HOST", "0.0.0.0")
 API_PORT = int(os.environ.get("SYNABOOT_API_PORT", "8000"))
 ADMIN_TOKEN = os.environ.get("SYNABOOT_ADMIN_TOKEN", "")
@@ -24,6 +24,8 @@ LOGS_DIR = DATA_DIR / "logs"
 DB_PATH = METADATA_DIR / "synaboot.sqlite3"
 LAST_WRITE_BY_CLIENT: dict[str, float] = {}
 SAFE_TITLE_RE = re.compile(r"[^A-Za-z0-9._ -]+")
+SAFE_IMAGE_REL_PATH_RE = re.compile(r"^[A-Za-z0-9._/-]+$")
+SAFE_IPXE_TEXT_RE = re.compile(r"[^A-Za-z0-9._/ -]+")
 
 IMAGE_EXTENSIONS = {
     ".iso": "iso",
@@ -31,10 +33,16 @@ IMAGE_EXTENSIONS = {
     ".esd": "esd",
     ".efi": "efi",
     ".img": "image",
+    ".qcow2": "image",
+    ".vhd": "image",
+    ".vhdx": "image",
     ".initrd": "initrd",
 }
 SPECIAL_NAMES = {
     "wimboot": "wimboot",
+    "bootmgr": "bootmgr",
+    "bcd": "bcd",
+    "boot.sdi": "boot-sdi",
     "vmlinuz": "linux-kernel",
     "initrd": "initrd",
     "boot.wim": "wim",
@@ -67,6 +75,7 @@ def connect_db() -> sqlite3.Connection:
         )
         """
     )
+    ensure_image_columns(conn)
     conn.execute(
         """
         CREATE TABLE IF NOT EXISTS jobs (
@@ -83,6 +92,29 @@ def connect_db() -> sqlite3.Connection:
     )
     conn.commit()
     return conn
+
+
+def ensure_image_columns(conn: sqlite3.Connection) -> None:
+    columns = {row["name"] for row in conn.execute("PRAGMA table_info(images)")}
+    migrations = {
+        "display_name": "ALTER TABLE images ADD COLUMN display_name TEXT NOT NULL DEFAULT ''",
+        "relative_path": "ALTER TABLE images ADD COLUMN relative_path TEXT NOT NULL DEFAULT ''",
+        "mtime_ns": "ALTER TABLE images ADD COLUMN mtime_ns INTEGER NOT NULL DEFAULT 0",
+        "sha256_cached": "ALTER TABLE images ADD COLUMN sha256_cached INTEGER NOT NULL DEFAULT 0",
+        "scan_status": "ALTER TABLE images ADD COLUMN scan_status TEXT NOT NULL DEFAULT 'present'",
+        "boot_readiness": "ALTER TABLE images ADD COLUMN boot_readiness TEXT NOT NULL DEFAULT 'unsupported'",
+        "last_seen_at": "ALTER TABLE images ADD COLUMN last_seen_at INTEGER NOT NULL DEFAULT 0",
+        "updated_at": "ALTER TABLE images ADD COLUMN updated_at INTEGER NOT NULL DEFAULT 0",
+        "missing_since": "ALTER TABLE images ADD COLUMN missing_since INTEGER",
+    }
+    for column, sql in migrations.items():
+        if column not in columns:
+            conn.execute(sql)
+    conn.execute("UPDATE images SET display_name = name WHERE display_name = ''")
+    conn.execute("UPDATE images SET relative_path = rel_path WHERE relative_path = ''")
+    conn.execute("UPDATE images SET updated_at = scanned_at WHERE updated_at = 0")
+    conn.execute("UPDATE images SET last_seen_at = scanned_at WHERE last_seen_at = 0")
+    conn.commit()
 
 
 def json_response(handler: BaseHTTPRequestHandler, status: int, payload: object) -> None:
@@ -122,6 +154,17 @@ def file_kind(path: Path) -> str | None:
     return IMAGE_EXTENSIONS.get(path.suffix.lower())
 
 
+def is_scannable_path(path: Path) -> bool:
+    parts = path.relative_to(IMAGES_DIR).parts
+    if any(part.startswith(".") for part in parts):
+        return False
+    name = path.name.lower()
+    if name.endswith(".tmp") or name.endswith(".part") or name.endswith(".download"):
+        return False
+    rel_path = path.relative_to(IMAGES_DIR).as_posix()
+    return bool(SAFE_IMAGE_REL_PATH_RE.fullmatch(rel_path)) and "//" not in rel_path
+
+
 def sha256_file(path: Path) -> str:
     digest = hashlib.sha256()
     with path.open("rb") as file:
@@ -140,14 +183,51 @@ def boot_method(category: str, kind: str, rel_path: str) -> str:
     return "http-download"
 
 
+def linux_group_ready(rel_path: str, present: set[str]) -> bool:
+    directory = rel_path.rsplit("/", 1)[0] if "/" in rel_path else ""
+    if "/casper/" in rel_path:
+        directory = rel_path.split("/casper/", 1)[0]
+    if not directory:
+        return False
+    has_iso = any(path.startswith(f"{directory}/") and path.lower().endswith(".iso") for path in present)
+    return has_iso and f"{directory}/casper/vmlinuz" in present and f"{directory}/casper/initrd" in present
+
+
+def hotpe_group_ready(present: set[str]) -> bool:
+    required = {
+        "pe/hotpe/wimboot",
+        "pe/hotpe/bootmgr",
+        "pe/hotpe/BCD",
+        "pe/hotpe/boot.sdi",
+        "pe/hotpe/boot.wim",
+    }
+    return required.issubset(present)
+
+
+def boot_readiness(category: str, kind: str, rel_path: str, present: set[str]) -> str:
+    if category == "windows" and kind in {"iso", "wim", "esd"}:
+        return "needs_hotpe"
+    if category == "pe" and "pe/hotpe/" in rel_path:
+        return "ready" if hotpe_group_ready(present) else "incomplete"
+    if category == "linux":
+        return "ready" if linux_group_ready(rel_path, present) else "incomplete"
+    return "unsupported"
+
+
 def scan_images() -> list[dict]:
     conn = connect_db()
     now = int(time.time())
     rows: list[dict] = []
     seen: set[str] = set()
+    existing = {
+        row["rel_path"]: dict(row)
+        for row in conn.execute("SELECT * FROM images")
+    }
+    discovered: list[dict] = []
+    present_paths: set[str] = set()
 
     for path in sorted(IMAGES_DIR.rglob("*")):
-        if path.is_symlink() or not path.is_file():
+        if path.is_symlink() or not path.is_file() or not is_scannable_path(path):
             continue
         kind = file_kind(path)
         if not kind:
@@ -155,49 +235,98 @@ def scan_images() -> list[dict]:
         rel_path = safe_relative(path, IMAGES_DIR)
         category = category_from_path(rel_path)
         seen.add(rel_path)
+        present_paths.add(rel_path)
+        stat = path.stat()
+        old = existing.get(rel_path)
+        sha256_cached = bool(
+            old
+            and old.get("size_bytes") == stat.st_size
+            and old.get("mtime_ns") == stat.st_mtime_ns
+            and old.get("sha256")
+            and old.get("scan_status") != "missing"
+        )
+        sha256 = old["sha256"] if sha256_cached else sha256_file(path)
         row = {
             "id": hashlib.sha256(rel_path.encode("utf-8")).hexdigest()[:16],
             "name": path.name,
+            "display_name": old.get("display_name") or path.name if old else path.name,
             "category": category,
             "kind": kind,
             "rel_path": rel_path,
+            "relative_path": rel_path,
             "url": f"http://{SERVER_IP}:{SYNABOOT_PORT}/images/{rel_path}",
-            "size_bytes": path.stat().st_size,
-            "sha256": sha256_file(path),
-            "menu_enabled": 1,
+            "size_bytes": stat.st_size,
+            "mtime_ns": stat.st_mtime_ns,
+            "sha256": sha256,
+            "sha256_cached": 1 if sha256_cached else 0,
+            "menu_enabled": old["menu_enabled"] if old else 1,
             "boot_method": boot_method(category, kind, rel_path),
+            "boot_readiness": "unsupported",
+            "scan_status": "present",
             "description": "",
             "scanned_at": now,
+            "last_seen_at": now,
+            "updated_at": now,
+            "missing_since": None,
         }
+        discovered.append(row)
+
+    for row in discovered:
+        row["boot_readiness"] = boot_readiness(row["category"], row["kind"], row["rel_path"], present_paths)
         conn.execute(
             """
             INSERT INTO images (
-                id, name, category, kind, rel_path, size_bytes, sha256,
-                menu_enabled, boot_method, description, scanned_at
+                id, name, display_name, category, kind, rel_path, relative_path, size_bytes, sha256,
+                menu_enabled, boot_method, description, scanned_at,
+                mtime_ns, sha256_cached, scan_status, boot_readiness, last_seen_at, updated_at, missing_since
             )
             VALUES (
-                :id, :name, :category, :kind, :rel_path, :size_bytes, :sha256,
-                :menu_enabled, :boot_method, :description, :scanned_at
+                :id, :name, :display_name, :category, :kind, :rel_path, :relative_path, :size_bytes, :sha256,
+                :menu_enabled, :boot_method, :description, :scanned_at,
+                :mtime_ns, :sha256_cached, :scan_status, :boot_readiness, :last_seen_at, :updated_at, :missing_since
             )
             ON CONFLICT(rel_path) DO UPDATE SET
                 name=excluded.name,
+                display_name=excluded.display_name,
                 category=excluded.category,
                 kind=excluded.kind,
+                relative_path=excluded.relative_path,
                 size_bytes=excluded.size_bytes,
                 sha256=excluded.sha256,
+                mtime_ns=excluded.mtime_ns,
+                sha256_cached=excluded.sha256_cached,
+                scan_status=excluded.scan_status,
+                boot_readiness=excluded.boot_readiness,
                 boot_method=excluded.boot_method,
-                scanned_at=excluded.scanned_at
+                scanned_at=excluded.scanned_at,
+                last_seen_at=excluded.last_seen_at,
+                updated_at=excluded.updated_at,
+                missing_since=NULL
             """,
             row,
         )
         rows.append(row)
 
-    if seen:
-        placeholders = ",".join("?" for _ in seen)
-        conn.execute(f"DELETE FROM images WHERE rel_path NOT IN ({placeholders})", tuple(seen))
-    else:
-        conn.execute("DELETE FROM images")
+    missing_paths = sorted(set(existing) - seen)
+    for rel_path in missing_paths:
+        old = existing[rel_path]
+        missing_since = old.get("missing_since") or now
+        conn.execute(
+            """
+            UPDATE images
+            SET scan_status = 'missing',
+                boot_readiness = 'missing',
+                updated_at = ?,
+                missing_since = ?
+            WHERE rel_path = ?
+            """,
+            (now, missing_since, rel_path),
+        )
     conn.commit()
+    rows = [
+        dict(row) | {"url": f"http://{SERVER_IP}:{SYNABOOT_PORT}/images/{row['rel_path']}"}
+        for row in conn.execute("SELECT * FROM images ORDER BY category, rel_path")
+    ]
     conn.close()
     write_menu(rows)
     return rows
@@ -206,11 +335,19 @@ def scan_images() -> list[dict]:
 def list_images() -> list[dict]:
     conn = connect_db()
     rows = [
-        dict(row) | {"url": f"http://{SERVER_IP}:{SYNABOOT_PORT}/images/{row['rel_path']}"}
+        image_payload(dict(row))
         for row in conn.execute("SELECT * FROM images ORDER BY category, rel_path")
     ]
     conn.close()
     return rows
+
+
+def image_payload(row: dict) -> dict:
+    row["display_name"] = row.get("display_name") or row.get("name", "")
+    row["relative_path"] = row.get("relative_path") or row.get("rel_path", "")
+    row["url"] = f"http://{SERVER_IP}:{SYNABOOT_PORT}/images/{row['rel_path']}"
+    row["sha256_cached"] = bool(row.get("sha256_cached"))
+    return row
 
 
 def get_image(image_id: str) -> dict | None:
@@ -219,7 +356,7 @@ def get_image(image_id: str) -> dict | None:
     conn.close()
     if row is None:
         return None
-    return dict(row) | {"url": f"http://{SERVER_IP}:{SYNABOOT_PORT}/images/{row['rel_path']}"}
+    return image_payload(dict(row))
 
 
 def set_image_menu_enabled(image_id: str, enabled: bool) -> dict | None:
@@ -234,54 +371,81 @@ def set_image_menu_enabled(image_id: str, enabled: bool) -> dict | None:
     return get_image(image_id)
 
 
-def menu_enabled(rel_path: str | None = None, *, category: str | None = None, kind: str | None = None) -> bool:
-    conn = connect_db()
-    clauses: list[str] = []
-    params: list[str] = []
-    if rel_path is not None:
-        clauses.append("rel_path = ?")
-        params.append(rel_path)
-    if category is not None:
-        clauses.append("category = ?")
-        params.append(category)
-    if kind is not None:
-        clauses.append("kind = ?")
-        params.append(kind)
-    where = " AND ".join(clauses) if clauses else "1=1"
-    rows = conn.execute(f"SELECT menu_enabled FROM images WHERE {where}", tuple(params)).fetchall()
-    conn.close()
-    if not rows:
-        return True
-    return any(row["menu_enabled"] == 1 for row in rows)
+def menu_rows(rows: list[dict] | None = None) -> list[dict]:
+    if rows is not None:
+        return rows
+    return list_images()
 
 
-def hotpe_ready() -> bool:
-    required = ["wimboot", "bootmgr", "BCD", "boot.sdi", "boot.wim"]
-    return all((IMAGES_DIR / "pe" / "hotpe" / name).is_file() and menu_enabled(f"pe/hotpe/{name}") for name in required)
+def row_enabled(row: dict) -> bool:
+    return int(row.get("menu_enabled") or 0) == 1 and row.get("scan_status") == "present"
 
 
-def ubuntu2204_ready() -> bool:
-    base = IMAGES_DIR / "linux" / "ubuntu-22.04.3"
-    iso_path = first_ubuntu_iso()
-    return (
-        (base / "casper" / "vmlinuz").is_file()
-        and menu_enabled("linux/ubuntu-22.04.3/casper/vmlinuz")
-        and (base / "casper" / "initrd").is_file()
-        and menu_enabled("linux/ubuntu-22.04.3/casper/initrd")
-        and any(base.glob("*.iso"))
-        and menu_enabled(iso_path)
+def hotpe_menu_ready(rows: list[dict]) -> bool:
+    required = {
+        "pe/hotpe/wimboot",
+        "pe/hotpe/bootmgr",
+        "pe/hotpe/BCD",
+        "pe/hotpe/boot.sdi",
+        "pe/hotpe/boot.wim",
+    }
+    enabled_present = {row["rel_path"] for row in rows if row_enabled(row)}
+    return required.issubset(enabled_present)
+
+
+def linux_boot_entries(rows: list[dict]) -> list[dict]:
+    entries: dict[str, dict] = {}
+    ready_rows = [
+        row
+        for row in rows
+        if row_enabled(row)
+        and row.get("category") == "linux"
+        and row.get("boot_readiness") == "ready"
+    ]
+    for row in ready_rows:
+        rel_path = row["rel_path"]
+        base = rel_path.split("/casper/", 1)[0] if "/casper/" in rel_path else rel_path.rsplit("/", 1)[0]
+        entry = entries.setdefault(base, {"base": base, "iso": None, "kernel": None, "initrd": None})
+        if rel_path.lower().endswith(".iso"):
+            entry["iso"] = rel_path
+        elif rel_path.endswith("/casper/vmlinuz"):
+            entry["kernel"] = rel_path
+        elif rel_path.endswith("/casper/initrd"):
+            entry["initrd"] = rel_path
+    return [
+        entry
+        for entry in entries.values()
+        if entry.get("iso") and entry.get("kernel") and entry.get("initrd")
+    ]
+
+
+def windows_hotpe_available(rows: list[dict]) -> bool:
+    return hotpe_menu_ready(rows) and any(
+        row_enabled(row)
+        and row.get("category") == "windows"
+        and row.get("boot_readiness") == "needs_hotpe"
+        for row in rows
     )
 
 
-def first_ubuntu_iso() -> str:
-    base = IMAGES_DIR / "linux" / "ubuntu-22.04.3"
-    iso = next(iter(sorted(base.glob("*.iso"))), None)
-    name = iso.name if iso else "ubuntu-22.04.3-live-server-amd64.iso"
-    return f"linux/ubuntu-22.04.3/{name}"
+def ipxe_label(value: str) -> str:
+    return re.sub(r"[^A-Za-z0-9_]+", "_", value).strip("_").lower()[:48] or "entry"
+
+
+def ipxe_url_path(rel_path: str) -> str:
+    return quote(rel_path, safe="/._-")
+
+
+def ipxe_text(value: str) -> str:
+    return SAFE_IPXE_TEXT_RE.sub("-", value).strip()[:96] or "entry"
 
 
 def write_menu(_rows: list[dict] | None = None) -> str:
     ensure_dirs()
+    rows = menu_rows(_rows)
+    hotpe_ready = hotpe_menu_ready(rows)
+    linux_entries = linux_boot_entries(rows)
+    windows_ready = windows_hotpe_available(rows)
     lines = [
         "#!ipxe",
         "",
@@ -291,21 +455,35 @@ def write_menu(_rows: list[dict] | None = None) -> str:
         "set image-url ${base-url}/images",
         "",
         ":start",
-        "menu SynaBoot Phase 1 - HTTP Boot",
-        "item --gap --          === PE / Recovery ===",
-        "item hotpe            HotPE via wimboot",
-        "item --gap --          === Linux ===",
-        "item ubuntu22043      Ubuntu 22.04.3 Live Server",
-        "item --gap --          === Windows ===",
-        "item windows_hotpe    Windows installation via HotPE",
-        "item --gap --          === Tools ===",
-        "item shell            iPXE shell",
-        "item reboot           Reboot",
-        "choose --default hotpe --timeout 15000 target && goto ${target} || goto start",
-        "",
-        ":hotpe",
+        "menu SynaBoot Phase 2 - HTTP/iPXE Boot",
     ]
-    if hotpe_ready():
+    if hotpe_ready:
+        lines.extend(["item --gap --          === PE / Recovery ===", "item hotpe            HotPE via wimboot"])
+    if linux_entries:
+        lines.append("item --gap --          === Linux ===")
+        for entry in linux_entries:
+            label = f"linux_{ipxe_label(entry['base'])}"
+            entry["label"] = label
+            lines.append(f"item {label:<16} Linux installer - {ipxe_text(entry['base'])}")
+    if windows_ready:
+        lines.extend(["item --gap --          === Windows ===", "item windows_hotpe    Windows installation via HotPE"])
+    lines.extend(
+        [
+            "item --gap --          === Tools ===",
+            "item shell            iPXE shell",
+            "item reboot           Reboot",
+            "item poweroff         Power off",
+        ]
+    )
+    default_target = "hotpe" if hotpe_ready else (linux_entries[0]["label"] if linux_entries else "shell")
+    lines.extend(
+        [
+            f"choose --default {default_target} --timeout 15000 target && goto ${{target}} || goto start",
+            "",
+            ":hotpe",
+        ]
+    )
+    if hotpe_ready:
         lines.extend(
             [
                 "echo Loading HotPE...",
@@ -320,39 +498,29 @@ def write_menu(_rows: list[dict] | None = None) -> str:
     else:
         lines.extend(
             [
-                "echo HotPE files are not ready.",
-                "echo Put wimboot, bootmgr, BCD, boot.sdi and boot.wim under ${image-url}/pe/hotpe/.",
+                "echo HotPE files are not enabled or not ready.",
                 "goto start",
             ]
         )
-    lines.extend(
-        [
-            "",
-            ":windows_hotpe",
-            "echo Windows ISO should be installed from HotPE.",
-            "echo Boot HotPE, then open ${image-url}/windows/.",
-            "goto hotpe",
-            "",
-            ":ubuntu22043",
-        ]
-    )
-    if ubuntu2204_ready():
-        iso_path = first_ubuntu_iso()
+    if windows_ready:
         lines.extend(
             [
-                "echo Loading Ubuntu 22.04.3 installer...",
-                "set ubuntu-url ${image-url}/linux/ubuntu-22.04.3",
-                f"kernel ${{ubuntu-url}}/casper/vmlinuz ip=dhcp url=${{base-url}}/images/{iso_path} ---",
-                "initrd ${ubuntu-url}/casper/initrd",
+                "",
+                ":windows_hotpe",
+                "echo Windows ISO/WIM/ESD should be installed from HotPE.",
+                "echo Boot HotPE, then open ${image-url}/windows/.",
+                "goto hotpe",
+            ]
+        )
+    for entry in linux_entries:
+        lines.extend(
+            [
+                "",
+                f":{entry['label']}",
+                f"echo Loading Linux installer from {ipxe_text(entry['base'])}...",
+                f"kernel ${{base-url}}/images/{ipxe_url_path(entry['kernel'])} ip=dhcp url=${{base-url}}/images/{ipxe_url_path(entry['iso'])} ---",
+                f"initrd ${{base-url}}/images/{ipxe_url_path(entry['initrd'])}",
                 "boot || goto boot_failed",
-            ]
-        )
-    else:
-        lines.extend(
-            [
-                "echo Ubuntu 22.04.3 files are not ready.",
-                "echo Put ISO, casper/vmlinuz and casper/initrd under ${image-url}/linux/ubuntu-22.04.3/.",
-                "goto start",
             ]
         )
     lines.extend(
@@ -364,6 +532,9 @@ def write_menu(_rows: list[dict] | None = None) -> str:
             "",
             ":reboot",
             "reboot",
+            "",
+            ":poweroff",
+            "poweroff",
             "",
             ":boot_failed",
             "echo Boot failed. Press any key to return to menu.",
@@ -387,9 +558,11 @@ set server-ip {SERVER_IP}
 set base-url http://${{server-ip}}:{SYNABOOT_PORT}
 
 :start
-menu SynaBoot Phase 1 - HTTP Boot
+menu SynaBoot Phase 2 - HTTP/iPXE Boot
+item --gap --          === No ready images ===
 item shell iPXE shell
 item reboot Reboot
+item poweroff Power off
 choose --default shell --timeout 15000 target && goto ${{target}} || goto start
 
 :shell
@@ -398,6 +571,14 @@ goto start
 
 :reboot
 reboot
+
+:poweroff
+poweroff
+
+:boot_failed
+echo Boot failed. Press any key to return to menu.
+prompt
+goto start
 """
 
 
@@ -410,8 +591,12 @@ def list_jobs() -> list[dict]:
 
 def create_job(payload: dict) -> dict:
     kind = payload.get("kind") if isinstance(payload, dict) else None
-    if kind not in {"ubuntu-autoinstall", "windows-adk-package"}:
-        kind = "ubuntu-autoinstall"
+    kind = {
+        "ubuntu-autoinstall": "ubuntu-autoinstall-template",
+        "ubuntu-autoinstall-template": "ubuntu-autoinstall-template",
+        "ubuntu-xorriso-iso": "ubuntu-xorriso-iso",
+        "windows-adk-package": "windows-adk-package",
+    }.get(kind, "ubuntu-autoinstall-template")
     now = int(time.time())
     job_id = uuid.uuid4().hex[:12]
     title = safe_title(payload.get("title"), f"{kind}-{job_id}")
@@ -423,13 +608,18 @@ def create_job(payload: dict) -> dict:
     (output_dir / "package").mkdir(parents=True, exist_ok=True)
 
     # 任务框架只生成安全的配置模板，不执行磁盘或系统修改。
-    if kind == "ubuntu-autoinstall":
+    if kind == "ubuntu-autoinstall-template":
         package_dir = output_dir / "package" / "ubuntu"
         package_dir.mkdir(parents=True, exist_ok=True)
         (package_dir / "user-data").write_text(ubuntu_user_data(title), encoding="utf-8")
         (package_dir / "meta-data").write_text(f"instance-id: {job_id}\nlocal-hostname: synaboot-client\n", encoding="utf-8")
         (package_dir / "README.md").write_text("请人工审查 user-data，确认密码 hash 与安装策略后再使用。\n", encoding="utf-8")
         note = "已生成 Ubuntu autoinstall 模板；请人工审查后再用于安装介质。"
+    elif kind == "ubuntu-xorriso-iso":
+        package_dir = output_dir / "package" / "ubuntu-xorriso"
+        package_dir.mkdir(parents=True, exist_ok=True)
+        (package_dir / "README.md").write_text(ubuntu_xorriso_readme(job_id), encoding="utf-8")
+        note = "已生成 Ubuntu xorriso ISO 任务说明；默认只处理 data/images 内的 ISO。"
     else:
         package_dir = output_dir / "package" / "windows-adk"
         package_dir.mkdir(parents=True, exist_ok=True)
@@ -439,7 +629,7 @@ def create_job(payload: dict) -> dict:
     row = {
         "id": job_id,
         "kind": kind,
-        "status": "pending",
+        "status": "draft",
         "title": title,
         "output_dir": output_dir.relative_to(DATA_DIR).as_posix(),
         "created_at": now,
@@ -447,7 +637,7 @@ def create_job(payload: dict) -> dict:
         "note": note,
     }
     (output_dir / "job.json").write_text(json.dumps(row, ensure_ascii=False, indent=2), encoding="utf-8")
-    (output_dir / "status.json").write_text(json.dumps({"status": "pending", "updated_at": now}, ensure_ascii=False, indent=2), encoding="utf-8")
+    (output_dir / "status.json").write_text(json.dumps({"status": "draft", "updated_at": now}, ensure_ascii=False, indent=2), encoding="utf-8")
     (output_dir / "logs" / "events.jsonl").write_text(json.dumps({"event": "created", "job_id": job_id, "created_at": now}, ensure_ascii=False) + "\n", encoding="utf-8")
     conn = connect_db()
     conn.execute(
@@ -474,7 +664,7 @@ autoinstall:
   locale: zh_CN.UTF-8
   keyboard:
     layout: us
-  # Phase 1 默认不生成 storage 自动分区配置。
+  # Phase 2 默认不生成 storage 自动分区配置。
   # 如需自动分区，必须由管理员二次确认后手动添加。
   packages: []
   late-commands:
@@ -504,27 +694,37 @@ def windows_adk_readme(job_id: str) -> str:
 """
 
 
+def ubuntu_xorriso_readme(job_id: str) -> str:
+    return f"""SynaBoot Ubuntu xorriso ISO 任务说明
+
+任务 ID: {job_id}
+
+二期仅提供安全的任务目录与说明模板。
+执行前必须确认输入 ISO 位于 data/images 内，输出写入 data/builds/<job-id>/output/artifacts。
+
+安全边界:
+- 不写入真实块设备。
+- 不执行自动分区或格式化。
+- 不挂载宿主系统目录。
+- autoinstall 默认不生成 storage 自动分区配置。
+"""
+
+
 def network_safety_status() -> dict:
     return {
         "status": "APPROVED_SCOPE",
         "server_ip": SERVER_IP,
         "http_port": SYNABOOT_PORT,
+        "admin_configured": bool(ADMIN_TOKEN),
         "menu_url": f"http://{SERVER_IP}:{SYNABOOT_PORT}/boot/menu.ipxe",
         "images_url": f"http://{SERVER_IP}:{SYNABOOT_PORT}/images/",
-        "allowed": ["HTTP 8080/tcp", "Docker bridge network", "static /images", "static /boot", "API reverse proxy"],
+        "allowed": ["HTTP 18080/tcp", "Docker bridge network", "static /images", "static /boot", "API reverse proxy"],
         "forbidden": ["DHCP", "ProxyDHCP", "TFTP", "Samba by default", "host network", "privileged containers", "UDP 67/68/69/4011"],
     }
 
 
 class Handler(BaseHTTPRequestHandler):
     def require_admin(self) -> bool:
-        if not ADMIN_TOKEN:
-            json_response(self, 403, {"error": "admin_actions_disabled"})
-            return False
-        provided = self.headers.get("X-SynaBoot-Admin-Token", "")
-        if provided != ADMIN_TOKEN:
-            json_response(self, 403, {"error": "invalid_admin_token"})
-            return False
         client = self.client_address[0]
         now = time.time()
         last = LAST_WRITE_BY_CLIENT.get(client, 0)
@@ -532,12 +732,19 @@ class Handler(BaseHTTPRequestHandler):
             json_response(self, 429, {"error": "rate_limited"})
             return False
         LAST_WRITE_BY_CLIENT[client] = now
+        if not ADMIN_TOKEN:
+            json_response(self, 403, {"error": "admin_actions_disabled"})
+            return False
+        provided = self.headers.get("X-SynaBoot-Admin-Token", "")
+        if provided != ADMIN_TOKEN:
+            json_response(self, 403, {"error": "invalid_admin_token"})
+            return False
         return True
 
     def do_GET(self) -> None:
         path = urlparse(self.path).path
         if path == "/api/health":
-            json_response(self, 200, {"status": "ok", "server_ip": SERVER_IP})
+            json_response(self, 200, {"status": "ok", "server_ip": SERVER_IP, "admin_configured": bool(ADMIN_TOKEN)})
         elif path == "/api/images":
             json_response(self, 200, {"images": list_images()})
         elif path.startswith("/api/images/"):
@@ -585,7 +792,12 @@ class Handler(BaseHTTPRequestHandler):
                 write_menu()
                 json_response(self, 200, image)
             return
-        if path in {"/api/jobs/ubuntu-autoinstall", "/api/jobs/windows-adk-package"}:
+        if path in {
+            "/api/jobs/ubuntu-autoinstall",
+            "/api/jobs/ubuntu-autoinstall-template",
+            "/api/jobs/ubuntu-xorriso-iso",
+            "/api/jobs/windows-adk-package",
+        }:
             kind = path.rsplit("/", 1)[-1]
             json_response(self, 201, create_job({"kind": kind}))
             return

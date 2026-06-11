@@ -1,11 +1,11 @@
 # 安全审查记录
 
-## 初始网络审查
+## 网络审查
 
-`network_safety_agent` 已批准 Phase 1 范围：
+`network_safety_agent` 已批准 Phase 2 零侵入范围：
 
 - `SERVER_IP=192.168.1.168`
-- 仅开放 `8080:8080/tcp`
+- 仅开放 `18080:8080/tcp`
 - Nginx 仅提供 HTTP 静态文件与 API 反代
 - 不启用 DHCP / ProxyDHCP / TFTP / Samba
 - 不使用 host network
@@ -32,35 +32,35 @@
 
 ## 端到端验证
 
-当前宿主机 `8080/tcp` 已有其他服务监听。为避免影响现网服务，已先由
-`network_safety_agent` 审查并批准 loopback 临时验证方案：
+当前宿主机 `8080/tcp` 已有其他服务监听。为避免影响现网服务，默认对外端口已迁移到
+`18080/tcp`，并已由 `network_safety_agent` 审查批准。
 
 ```bash
-SYNABOOT_HTTP_BIND=127.0.0.1:18180 SYNABOOT_HTTP_PORT=18180 docker compose up -d --build
+docker compose up -d --build
 ```
 
 验证通过：
 
 ```bash
-curl http://127.0.0.1:18180/
-curl http://127.0.0.1:18180/boot/menu.ipxe
-curl http://127.0.0.1:18180/images/
-curl http://127.0.0.1:18180/api/images
+curl http://localhost:18080/
+curl http://localhost:18080/boot/menu.ipxe
+curl http://localhost:18080/images/
+curl http://localhost:18080/api/network-safety
 ```
 
 验证后已执行：
 
 ```bash
-SYNABOOT_HTTP_BIND=127.0.0.1:18180 SYNABOOT_HTTP_PORT=18180 docker compose down
+docker compose down
 ```
 
-默认部署仍为 `8080/tcp`。正式部署前需确认并释放当前宿主机 `8080/tcp`。
+默认部署为 `18080/tcp`。本轮验证前预检显示 `18080/tcp` 未监听。
 
-## Phase 1 实现后审查
+## Phase 2 实现后审查
 
 当前状态：代码级审查通过。宿主机 `8080/tcp` 被现有非 SynaBoot 服务占用，
-因此未替换该端口上的服务；已使用获批的 loopback 端口完成 Docker Compose
-端到端验证。
+因此未替换该端口上的服务；已使用获批的默认 `18080/tcp` 端口完成 Docker Compose
+端到端验证，并在验证后执行 `docker compose down`。
 
 审查范围：
 
@@ -72,7 +72,7 @@ SYNABOOT_HTTP_BIND=127.0.0.1:18180 SYNABOOT_HTTP_PORT=18180 docker compose down
 
 审查结论：
 
-- Compose 最终配置仅发布 `8080/tcp`。
+- Compose 最终配置仅发布 `18080/tcp`。
 - API 仅通过 Compose 内部 `expose: 8000` 暴露给 Nginx 和 Worker。
 - Worker 不发布端口，只请求内部 API 触发镜像扫描。
 - 未使用 `network_mode: host`。
@@ -87,12 +87,12 @@ SYNABOOT_HTTP_BIND=127.0.0.1:18180 SYNABOOT_HTTP_PORT=18180 docker compose down
 ```bash
 SERVER_IP=192.168.1.168 bash scripts/preflight/check-network-safety.sh
 SERVER_IP=192.168.1.168 docker compose config
-SYNABOOT_HTTP_BIND=127.0.0.1:18180 SYNABOOT_HTTP_PORT=18180 docker compose up -d --build
-curl http://127.0.0.1:18180/
-curl http://127.0.0.1:18180/boot/menu.ipxe
-curl http://127.0.0.1:18180/images/
-curl http://127.0.0.1:18180/api/images
-SYNABOOT_HTTP_BIND=127.0.0.1:18180 SYNABOOT_HTTP_PORT=18180 docker compose down
+docker compose up -d --build
+curl http://localhost:18080/
+curl http://localhost:18080/boot/menu.ipxe
+curl http://localhost:18080/images/
+curl http://localhost:18080/api/network-safety
+docker compose down
 python3 -m py_compile apps/api/main.py apps/worker/scan_images.py
 bash -n scripts/preflight/check-network-safety.sh scripts/generate-ipxe-menu.sh scripts/sync-metadata.sh scripts/create-ipxe-usb.sh scripts/image-factory/create-job-template.sh
 ```
@@ -101,4 +101,4 @@ bash -n scripts/preflight/check-network-safety.sh scripts/generate-ipxe-menu.sh 
 
 - 当前宿主机已有服务监听 `8080/tcp`，且返回内容不是 SynaBoot。
 - 未停止或修改该未知服务。
-- 正式部署到默认端口前，需要管理员释放 `8080/tcp`，再执行 `docker compose up -d`。
+- 默认端口已迁移到 `18080/tcp`，正式部署前需要管理员确认该端口未被占用，再执行 `docker compose up -d`。

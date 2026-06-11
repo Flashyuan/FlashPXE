@@ -29,17 +29,17 @@
       <header class="topbar">
         <div>
           <h1 id="page-title">Dashboard</h1>
-          <p id="page-subtitle">Phase 1 零侵入 HTTP Boot 控制台</p>
+          <p id="page-subtitle">Phase 2 零侵入 HTTP/iPXE Boot 控制台</p>
         </div>
         <button id="refresh-button" class="primary">刷新</button>
       </header>
 
       <section id="dashboard" class="view active">
         <div class="metrics">
-          <article><span>Web UI</span><strong>http://192.168.1.168:8080/</strong></article>
+          <article><span>Web UI</span><strong>http://192.168.1.168:18080/</strong></article>
           <article><span>iPXE 菜单</span><strong>/boot/menu.ipxe</strong></article>
           <article><span>镜像仓库</span><strong>/images/</strong></article>
-          <article><span>网络模式</span><strong>仅 8080/tcp</strong></article>
+          <article><span>启动就绪</span><strong id="ready-count">0</strong></article>
         </div>
         <div class="panel">
           <h2>分类统计</h2>
@@ -58,6 +58,7 @@
             <option value="tools">Tools</option>
             <option value="custom">Custom</option>
           </select>
+          <button id="scan-button" class="primary admin-action">扫描镜像</button>
         </div>
         <div class="panel">
           <h2>镜像文件</h2>
@@ -69,6 +70,7 @@
                   <th>分类</th>
                   <th>类型</th>
                   <th>大小</th>
+                  <th>状态</th>
                   <th>启动方式</th>
                   <th>路径</th>
                   <th>菜单</th>
@@ -78,14 +80,21 @@
             </table>
           </div>
         </div>
+        <div class="panel" id="image-detail-panel">
+          <h2>镜像详情</h2>
+          <div id="image-detail" class="detail-grid">
+            <p>选择镜像后查看路径、SHA256、启动状态和缺失信息。</p>
+          </div>
+        </div>
       </section>
 
       <section id="menu" class="view">
         <div class="panel split">
           <div>
             <h2>启动入口</h2>
-            <p class="mono">chain http://192.168.1.168:8080/boot/menu.ipxe</p>
-            <p>Windows ISO 默认通过 HotPE 访问安装；Ubuntu 需要 ISO、vmlinuz、initrd 同时就绪。</p>
+            <p class="mono">chain http://192.168.1.168:18080/boot/menu.ipxe</p>
+            <p>只有 present、ready、已启用的镜像会进入菜单。Windows ISO/WIM/ESD 默认通过 HotPE 访问安装。</p>
+            <button id="generate-menu-button" class="primary admin-action">重新生成菜单</button>
           </div>
           <pre id="menu-preview"></pre>
         </div>
@@ -101,15 +110,16 @@ BCD
 boot.sdi
 boot.wim</pre>
           <p>进入 HotPE 后访问 Windows 镜像仓库：</p>
-          <p class="mono">http://192.168.1.168:8080/images/windows/</p>
+          <p class="mono">http://192.168.1.168:18080/images/windows/</p>
           <p>Samba 默认未启用；启用前必须重新通过网络安全审查。</p>
         </div>
       </section>
 
       <section id="jobs" class="view">
         <div class="toolbar">
-          <button data-kind="ubuntu-autoinstall" class="primary job-create">创建 Ubuntu 模板任务</button>
-          <button data-kind="windows-adk-package" class="job-create">创建 Windows ADK 包任务</button>
+          <button data-kind="ubuntu-autoinstall-template" class="primary job-create admin-action">创建 Ubuntu 模板任务</button>
+          <button data-kind="ubuntu-xorriso-iso" class="job-create admin-action">创建 Ubuntu ISO 任务</button>
+          <button data-kind="windows-adk-package" class="job-create admin-action">创建 Windows ADK 包任务</button>
         </div>
         <div class="panel">
           <h2>任务列表</h2>

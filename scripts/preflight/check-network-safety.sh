@@ -15,7 +15,7 @@ info() {
 
 compose_file="docker-compose.yml"
 server_ip="${SERVER_IP:-192.168.1.168}"
-http_port="${SYNABOOT_PORT:-8080}"
+http_port="${SYNABOOT_HTTP_PORT:-18080}"
 
 info "SynaBoot network safety preflight"
 info "SERVER_IP=${server_ip}"
@@ -41,7 +41,7 @@ if command -v ss >/dev/null 2>&1; then
     info "端口 ${http_port}/tcp 当前未监听"
   fi
   if printf '%s\n' "$listeners" | grep -Eq ':(137|138|139|445)[[:space:]]'; then
-    info "Samba 相关端口已有监听；Phase 1 默认不会启用 Samba"
+    info "Samba 相关端口已有监听；Phase 2 默认不会启用 Samba"
   else
     info "Samba 相关端口当前未监听"
   fi
@@ -80,4 +80,4 @@ while IFS= read -r script; do
   done
 done < <(find scripts -type f | sort)
 
-info "APPROVED: 当前文件未发现 Phase 1 禁止网络行为"
+info "APPROVED: 当前文件未发现 Phase 2 禁止网络行为"

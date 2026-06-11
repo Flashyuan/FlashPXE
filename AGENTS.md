@@ -42,9 +42,9 @@ Build a Docker Compose deployable platform on Ubuntu 22.04:
 - Ubuntu autoinstall templates
 - Windows external ADK/DISM task package templates
 
-## Phase 1 Network Model
+## Phase 1/2 Network Model
 
-Phase 1 is zero-intrusion.
+Phase 1 and Phase 2 are both zero-intrusion.
 
 Do not implement DHCP, ProxyDHCP, or TFTP.
 
@@ -56,7 +56,7 @@ Users boot using:
 The iPXE menu loads from:
 
 ```text
-http://<SERVER_IP>:8080/boot/menu.ipxe
+http://<SERVER_IP>:18080/boot/menu.ipxe
 ```
 
 ## Required Subagents
@@ -87,7 +87,7 @@ After implementation, spawn both network_safety_agent and security_audit_agent f
 - Keep generated boot files under `./data/boot`.
 - All scripts must be idempotent.
 - All destructive operations must require explicit user confirmation.
-- Never auto-format or partition disks from this platform in Phase 1.
+- Never auto-format or partition disks from this platform in Phase 1 or Phase 2.
 
 ## Validation Commands
 
@@ -97,9 +97,9 @@ Prefer local safe commands:
 bash scripts/preflight/check-network-safety.sh
 docker compose config
 docker compose up -d
-curl http://localhost:8080/
-curl http://localhost:8080/boot/menu.ipxe
-curl http://localhost:8080/images/
+curl http://localhost:18080/
+curl http://localhost:18080/boot/menu.ipxe
+curl http://localhost:18080/images/
 ```
 
 Do not run commands that alter LAN network behavior.

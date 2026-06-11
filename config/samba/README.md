@@ -1,6 +1,6 @@
 # Samba 配置占位
 
-SynaBoot Phase 1 默认不启用 Samba，也不会开放 `445/139/137/138`。
+SynaBoot Phase 2 默认不启用 Samba，也不会开放 `445/139/137/138`。
 
 如后续需要 Samba，必须先完成：
 

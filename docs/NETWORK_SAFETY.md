@@ -1,14 +1,15 @@
 # SynaBoot 网络安全边界
 
-SynaBoot Phase 1 是零侵入 HTTP Boot 平台，只开放 `8080/tcp`。
+SynaBoot Phase 2 是零侵入 HTTP/iPXE Boot 平台，默认只开放 `18080/tcp`。
 
 ## 已批准范围
 
-- Web UI：`http://192.168.1.168:8080/`
-- iPXE 菜单：`http://192.168.1.168:8080/boot/menu.ipxe`
-- 镜像仓库：`http://192.168.1.168:8080/images/`
+- Web UI：`http://192.168.1.168:18080/`
+- iPXE 菜单：`http://192.168.1.168:18080/boot/menu.ipxe`
+- 镜像仓库：`http://192.168.1.168:18080/images/`
 - Docker 使用默认 bridge 网络
 - Nginx 反代内部 API，并静态提供 `/images/` 与 `/boot/`
+- `/images/` 禁止跟随软链接，镜像路径限制在 `data/images`
 
 ## 禁止项
 

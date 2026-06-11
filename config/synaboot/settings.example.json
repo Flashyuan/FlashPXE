@@ -1,6 +1,6 @@
 {
   "server_ip": "192.168.1.168",
-  "http_port": 8080,
+  "http_port": 18080,
   "phase": "phase1-zero-intrusion",
   "samba_enabled": false,
   "dhcp_enabled": false,

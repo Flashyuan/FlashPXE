@@ -1,10 +1,11 @@
 # 镜像制作工厂
 
-Phase 1 的镜像工厂只做任务编排与模板生成，不执行破坏性磁盘操作。
+Phase 2 的镜像工厂只做任务编排与模板生成，不执行破坏性磁盘操作。
 
 ## 支持任务
 
-- `ubuntu-autoinstall`：生成 `user-data` 与 `meta-data` 模板
+- `ubuntu-autoinstall-template`：生成 `user-data` 与 `meta-data` 模板
+- `ubuntu-xorriso-iso`：生成 Ubuntu ISO 任务说明与安全输出目录
 - `windows-adk-package`：生成 Windows ADK/DISM 外部构建包说明
 
 任务输出目录：
@@ -20,6 +21,8 @@ data/builds/<job-id>/
 生成的密码字段必须替换为加密 hash，不应保存明文密码。
 
 默认 `user-data` 不包含 `storage:` 自动分区段，避免触发自动格式化语义。
+
+任务创建后默认状态为 `draft`。后续执行或推进状态必须由管理员显式确认。
 
 ## Windows ADK/DISM
 
