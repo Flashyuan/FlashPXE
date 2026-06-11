@@ -81,6 +81,50 @@ data/
 
 这条链路只使用 HTTP。SynaBoot 不参与客户端获取 IP 的过程，不提供 DHCP、ProxyDHCP 或 TFTP。
 
+## Phase 3 只读启动入口模型
+
+Phase 3 的目标是后续支持 UEFI HTTP/PXE 启动入口，但当前只实现只读模型和门禁展示。
+
+当前只读链路：
+
+```text
+[Web UI 启动入口页]
+        |
+        v
+GET /api/boot-entry
+        |
+        +--> 启动入口状态：HTTP IPv4 / PXE IPv4 / HTTP IPv6 / PXE IPv6
+        +--> 文档入口：BOOT_ENTRY_INTEGRATION.md
+        +--> 本地确认模板：BOOT_ENTRY_LOCAL_VERIFICATION.md
+        +--> Phase 3.3 gate：blocked_until_local_verification
+
+GET /api/boot-assets
+        |
+        +--> 固定白名单 loader 元数据
+        +--> ipxe.efi / snponly.efi / undionly.kpxe / ipxe.iso
+        +--> symlink 与父目录 symlink 均不标记为可用
+```
+
+`/api/boot-entry` 不写入配置，不启用服务，不修改网络设备。
+
+`/api/boot-assets` 只扫描 `data/boot/loaders` 下固定白名单文件名，不下载、生成、上传、替换、删除或执行 boot loader。
+
+Nginx `/boot/` 只允许精确访问：
+
+```text
+/boot/menu.ipxe
+/boot/loaders/ipxe.efi
+/boot/loaders/snponly.efi
+/boot/loaders/undionly.kpxe
+/boot/loaders/ipxe.iso
+```
+
+其它 `/boot/` 路径返回 404，并启用 `disable_symlinks on`。
+
+Phase 3.3 继续保持 `BLOCKED`，直到管理员完成 `BOOT_ENTRY_LOCAL_VERIFICATION.md` 中的本地只读设备能力确认，并重新通过 `research_agent`、`network_safety_agent`、`security_audit_agent` 和 `project_decision_agent` 审查。
+
+当前架构仍不提供 DHCP、ProxyDHCP、TFTP，也不开放 UDP `67/68/69/4011`。
+
 ## 镜像扫描流程
 
 ```text

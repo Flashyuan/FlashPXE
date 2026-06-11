@@ -2124,11 +2124,20 @@ curl http://localhost:18080/api/boot-entry
 6. Phase 3.5：文档与验证
    - 新增 `docs/BOOT_ENTRY_INTEGRATION.md`。
    - 新增 `docs/BOOT_ENTRY_LOCAL_VERIFICATION.md`。
+   - 更新 `docs/ARCHITECTURE.md`，固化 Phase 3 只读启动入口模型、
+     `/api/boot-entry`、`/api/boot-assets`、Nginx `/boot/` 精确白名单和
+     Phase 3.3 blocked 门禁。
    - 更新 README/ADMIN_GUIDE/NETWORK_SAFETY。
    - 单台测试机验证 UEFI PXE IPv4。
    - 验证普通终端 DHCP、网关、内网和互联网不受影响。
    - 当前状态：已创建只读文档草案；真实测试机验证等待 Phase 3.3 门禁解除。
    - 本轮文档门禁同步验证记录：
+     - `bash scripts/preflight/check-network-safety.sh`
+     - `docker compose config`
+     - `ss -lntu | grep -E ':(67|68|69|4011)\b' || true`
+     - `rg -n "network_mode: host|privileged: true|67:|68:|69:|4011:|dnsmasq|proxydhcp|tftp|dhcp" docker-compose.yml scripts apps config docs PLAN.md README.md`
+     - `git diff --check`
+   - 本轮架构文档同步验证记录：
      - `bash scripts/preflight/check-network-safety.sh`
      - `docker compose config`
      - `ss -lntu | grep -E ':(67|68|69|4011)\b' || true`
