@@ -2136,6 +2136,10 @@ curl http://localhost:18080/api/boot-entry
      `phase3_3_feasibility`，Web UI 展示本地确认模板、受控 ProxyDHCP
      可行性评估、报文判读清单、TFTP loader 范围、回滚清单、审查模板、
      集成说明和 Phase 3.3 blocked 状态。
+   - 本轮只读门禁增强：`phase3_3_gate` 增加已确认事实、仍缺事实、
+     解除门禁前置条件和禁止推断列表，Web UI 展示“本地事实门禁”面板，
+     用于防止后续接力误把 TL-ER6120T 型号或固件信息当成 Option 66/67
+     可用证明。
    - 本轮只读展示增强验证记录：
      - `python3 -m py_compile apps/api/main.py apps/worker/scan_images.py`
      - `node --check apps/web/assets/app.js`

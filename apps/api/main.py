@@ -1027,6 +1027,30 @@ def boot_entry_status() -> dict:
             "operational_assumption": "Do not rely on the main router DHCP Option 66/67 path unless later evidence proves it is available and safe.",
             "allowed_next_step": "controlled_proxydhcp_feasibility_evaluation_only",
             "template": "docs/BOOT_ENTRY_LOCAL_VERIFICATION.md",
+            "confirmed_evidence": [
+                "Router model: TP-Link TL-ER6120T.",
+                "Hardware version: TL-ER6120T 1.0.",
+                "Current firmware: 1.2.2 Build 240829 Rel.84642n.",
+                "Router UI screenshot did not show DHCP Option 66/67 or equivalent boot option settings.",
+                "Administrator currently cannot find DHCP Option 66/67 settings in the TL-ER6120T UI.",
+            ],
+            "missing_local_facts": [
+                "Whether TL-ER6120T exposes next-server / boot server settings in another readonly page.",
+                "Whether TL-ER6120T exposes bootfile / Option 67 settings in another readonly page.",
+                "Whether TL-ER6120T can match Vendor Class Option 60 for PXEClient or HTTPClient.",
+                "Whether TL-ER6120T can match Client Architecture Option 93 for BIOS versus UEFI clients.",
+                "Whether firmware 1.2.3 changes boot metadata capabilities.",
+            ],
+            "blocked_until": [
+                "Readonly local evidence proves router boot metadata settings exist and are safe, or project_decision_agent approves continuing only with controlled ProxyDHCP feasibility evaluation.",
+                "network_safety_agent and security_audit_agent approve any future isolated validation plan.",
+                "No production LAN test, ProxyDHCP/TFTP enablement, or UDP 67/68/69/4011 exposure is requested by this API state.",
+            ],
+            "do_not_infer": [
+                "Do not infer Option 66/67 support from the device model alone.",
+                "Do not infer safe PXE behavior from a firmware update notice.",
+                "Do not treat the ProxyDHCP candidate as approved implementation work.",
+            ],
         },
         "phase3_3_feasibility": {
             "mode": "documentation_only",

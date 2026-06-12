@@ -275,6 +275,7 @@ async function renderJobDetail(jobId) {
 
 function renderBootEntry() {
   const documentation = bootEntry.documentation || {};
+  const phaseGate = bootEntry.phase3_3_gate || {};
   const docItems = [
     documentation.local_verification_template,
     documentation.proxydhcp_feasibility,
@@ -302,6 +303,20 @@ function renderBootEntry() {
         <h3>${escapeHtml(doc.label || "")}</h3>
         <p class="mono">${escapeHtml(doc.path || "")}</p>
         <p>${escapeHtml(doc.purpose || "")}</p>
+      </article>`,
+    )
+    .join("");
+  const gateItems = [
+    ["已确认事实", phaseGate.confirmed_evidence || []],
+    ["仍缺事实", phaseGate.missing_local_facts || []],
+    ["解除门禁前置条件", phaseGate.blocked_until || []],
+    ["禁止推断", phaseGate.do_not_infer || []],
+  ];
+  document.querySelector("#boot-entry-gate").innerHTML = gateItems
+    .map(
+      ([label, items]) => `<article>
+        <h3>${escapeHtml(label)}</h3>
+        <p>${escapeHtml((items || []).join("；") || "无")}</p>
       </article>`,
     )
     .join("");
