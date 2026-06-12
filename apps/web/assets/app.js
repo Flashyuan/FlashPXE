@@ -352,11 +352,20 @@ function renderBootEntry() {
 }
 
 function renderSafety() {
+  const phase3Gate = safety.phase3_gate || {};
+  const phase3ActionAllowed = [
+    phase3Gate.implementation_allowed,
+    phase3Gate.service_enablement_allowed,
+    phase3Gate.production_lan_testing_allowed,
+  ].some(Boolean);
   const items = [
     ["状态", safety.status],
     ["SERVER_IP", safety.server_ip],
     ["HTTP 端口", safety.http_port],
     ["管理 token", adminConfigured() ? "已配置" : "未配置，写操作不可用"],
+    ["Phase 3.3", phase3Gate.status || ""],
+    ["启动入口展示阶段", phase3Gate.display_phase || ""],
+    ["允许实现/启用/生产 LAN 测试", phase3ActionAllowed ? "是" : "否"],
     ["允许范围", (safety.allowed || []).join(", ")],
     ["禁止项", (safety.forbidden || []).join(", ")],
   ];

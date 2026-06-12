@@ -2146,6 +2146,9 @@ curl http://localhost:18080/api/boot-entry
    - 本轮 API/UI 摘要同步：`/api/boot-entry` 保留 `phase=3.1` 作为只读模型
      阶段，同时新增 `display_phase=3.4` 与 `display_status`；Web UI 摘要
      区分“模型阶段”和“展示阶段”，避免把 Phase 3.4 展示误读为运行时解锁。
+   - 本轮网络安全页同步：`/api/network-safety` 增加只读 `phase3_gate`
+     摘要，Web UI “网络安全”页展示 Phase 3.3 blocked 状态、启动入口展示
+     阶段，以及实现、服务启用、生产 LAN 测试均不允许。
    - 本轮只读展示增强验证记录：
      - `python3 -m py_compile apps/api/main.py apps/worker/scan_images.py`
      - `node --check apps/web/assets/app.js`

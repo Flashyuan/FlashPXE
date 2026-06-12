@@ -901,6 +901,15 @@ def network_safety_status() -> dict:
         "images_url": f"http://{SERVER_IP}:{SYNABOOT_PORT}/images/",
         "allowed": ["HTTP 18080/tcp", "Docker bridge network", "static /images", "static /boot", "API reverse proxy"],
         "forbidden": ["DHCP", "ProxyDHCP", "TFTP", "Samba by default", "host network", "privileged containers", "UDP 67/68/69/4011"],
+        "phase3_gate": {
+            "model_phase": "3.1",
+            "display_phase": "3.4",
+            "status": "router_option_path_not_recommended_but_blocked",
+            "allowed_next_step": "controlled_proxydhcp_feasibility_evaluation_only",
+            "implementation_allowed": False,
+            "service_enablement_allowed": False,
+            "production_lan_testing_allowed": False,
+        },
     }
 
 
