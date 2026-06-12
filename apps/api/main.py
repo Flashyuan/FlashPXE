@@ -1014,6 +1014,11 @@ def boot_entry_status() -> dict:
                 "path": "docs/PHASE3_ROLLBACK_CHECKLIST.md",
                 "purpose": "Documentation-only rollback evidence checklist. No network change is approved.",
             },
+            "phase3_review_templates": {
+                "label": "Phase 3 review templates",
+                "path": "docs/PHASE3_REVIEW_TEMPLATES.md",
+                "purpose": "Documentation-only network and security review templates for future gates.",
+            },
         },
         "local_verification_template": "docs/BOOT_ENTRY_LOCAL_VERIFICATION.md",
         "phase3_3_gate": {
@@ -1031,6 +1036,7 @@ def boot_entry_status() -> dict:
             "packet_review_doc": "docs/PROXYDHCP_PACKET_REVIEW.md",
             "tftp_loader_scope_doc": "docs/TFTP_LOADER_SCOPE.md",
             "rollback_checklist_doc": "docs/PHASE3_ROLLBACK_CHECKLIST.md",
+            "review_templates_doc": "docs/PHASE3_REVIEW_TEMPLATES.md",
             "implementation_allowed": False,
             "service_enablement_allowed": False,
             "production_lan_testing_allowed": False,

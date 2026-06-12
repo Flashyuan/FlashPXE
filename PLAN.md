@@ -2115,6 +2115,8 @@ curl http://localhost:18080/api/boot-entry
      当前仅定义未来隔离验证的固定 loader 白名单，不包含 TFTP 服务配置。
    - Phase 3 回滚清单：`docs/PHASE3_ROLLBACK_CHECKLIST.md`。
      当前仅定义未来验证的恢复证据与阻塞条件，不包含网络设备操作步骤。
+   - Phase 3 审查模板：`docs/PHASE3_REVIEW_TEMPLATES.md`。
+     当前仅定义 network_safety_agent 与 security_audit_agent 的审查记录格式。
    - 默认关闭。
    - 不得分配 IP。
    - 不得修改网关、DNS、路由、防火墙。
@@ -2132,8 +2134,8 @@ curl http://localhost:18080/api/boot-entry
    - 本轮只读展示增强：`/api/boot-entry` 返回 `documentation`、
      `local_verification_template`、`phase3_3_gate` 和
      `phase3_3_feasibility`，Web UI 展示本地确认模板、受控 ProxyDHCP
-     可行性评估、报文判读清单、TFTP loader 范围、回滚清单、集成说明
-     和 Phase 3.3 blocked 状态。
+     可行性评估、报文判读清单、TFTP loader 范围、回滚清单、审查模板、
+     集成说明和 Phase 3.3 blocked 状态。
    - 本轮只读展示增强验证记录：
      - `python3 -m py_compile apps/api/main.py apps/worker/scan_images.py`
      - `node --check apps/web/assets/app.js`

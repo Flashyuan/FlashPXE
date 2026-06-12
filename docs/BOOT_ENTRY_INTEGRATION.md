@@ -39,7 +39,8 @@ ProxyDHCP、TFTP 或任何 DHCP 服务。
 
 评估记录见 `PROXYDHCP_FEASIBILITY.md`；未来隔离验证的报文字段判读标准见
 `PROXYDHCP_PACKET_REVIEW.md`；TFTP loader 文件范围见
-`TFTP_LOADER_SCOPE.md`；回滚判据见 `PHASE3_ROLLBACK_CHECKLIST.md`。
+`TFTP_LOADER_SCOPE.md`；回滚判据见 `PHASE3_ROLLBACK_CHECKLIST.md`；
+审查模板见 `PHASE3_REVIEW_TEMPLATES.md`。
 
 必须先确认以下事实：
 

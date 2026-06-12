@@ -100,6 +100,7 @@ GET /api/boot-entry
         +--> ProxyDHCP 报文判读：PROXYDHCP_PACKET_REVIEW.md
         +--> TFTP loader 范围：TFTP_LOADER_SCOPE.md
         +--> Phase 3 回滚清单：PHASE3_ROLLBACK_CHECKLIST.md
+        +--> Phase 3 审查模板：PHASE3_REVIEW_TEMPLATES.md
         +--> Phase 3.3 gate：router_option_path_not_recommended_but_blocked
 
 GET /api/boot-assets
@@ -137,6 +138,8 @@ TFTP loader 文件范围见 `docs/TFTP_LOADER_SCOPE.md`，该文档只定义未�
 隔离验证的固定 loader 白名单，不包含 TFTP 服务配置。
 回滚判据见 `docs/PHASE3_ROLLBACK_CHECKLIST.md`，该文档只定义未来验证的
 恢复证据和阻塞条件，不包含网络设备操作步骤。
+审查模板见 `docs/PHASE3_REVIEW_TEMPLATES.md`，该文档只定义未来
+network_safety_agent 与 security_audit_agent 的结论记录格式。
 
 Phase 3.3 继续保持 `BLOCKED`。任何 TFTP/ProxyDHCP 设计、实验或实现前，
 都必须重新通过 `research_agent`、`network_safety_agent`、

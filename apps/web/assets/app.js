@@ -281,6 +281,7 @@ function renderBootEntry() {
     documentation.proxydhcp_packet_review,
     documentation.tftp_loader_scope,
     documentation.phase3_rollback_checklist,
+    documentation.phase3_review_templates,
     documentation.integration_guide,
   ].filter(Boolean);
   const summary = [
