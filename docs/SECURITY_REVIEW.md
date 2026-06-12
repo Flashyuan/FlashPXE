@@ -127,6 +127,8 @@ bash -n scripts/preflight/check-network-safety.sh scripts/generate-ipxe-menu.sh 
 - 未开放 UDP `67/68/69/4011`。
 - 未修改 TP-Link、OpenWrt、交换机、AP、VLAN、DNS、路由、防火墙或网关。
 - `/api/boot-entry` 只返回只读状态、文档入口、待确认项和安全门禁。
+- `/api/boot-entry` 保留 `phase=3.1` 作为后端只读模型阶段，仅新增
+  `display_phase=3.4` 和 `display_status` 作为 Web UI 展示层元数据。
 - `/api/boot-entry` 的 `phase3_3_gate` 只新增已确认事实、仍缺事实、
   解除门禁前置条件和禁止推断列表，不新增写接口或启用入口。
 - `/api/boot-assets` 只扫描固定白名单 loader 文件名，不下载、生成、替换、删除或执行 loader。
@@ -168,6 +170,8 @@ git diff --check
 
 补充 smoke test 覆盖：
 
+- `phase=3.1` 仍表示后端只读模型阶段。
+- `display_phase=3.4` 和 `display_status` 仅表示 Web UI 只读展示阶段。
 - `phase3_3_gate.status=router_option_path_not_recommended_but_blocked`。
 - `confirmed_evidence`、`missing_local_facts`、`blocked_until`、
   `do_not_infer` 均存在。

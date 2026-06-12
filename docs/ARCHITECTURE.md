@@ -93,6 +93,9 @@ Phase 3 的目标是后续支持 UEFI HTTP/PXE 启动入口，但当前只实现
         v
 GET /api/boot-entry
         |
+        +--> 模型阶段：phase=3.1
+        +--> 展示阶段：display_phase=3.4
+        +--> 展示状态：readonly_boot_entry_with_local_fact_gate
         +--> 启动入口状态：HTTP IPv4 / PXE IPv4 / HTTP IPv6 / PXE IPv6
         +--> 文档入口：BOOT_ENTRY_INTEGRATION.md
         +--> 本地确认模板：BOOT_ENTRY_LOCAL_VERIFICATION.md
@@ -116,6 +119,9 @@ GET /api/boot-assets
 ```
 
 `/api/boot-entry` 不写入配置，不启用服务，不修改网络设备。
+其中 `phase=3.1` 表示后端只读模型阶段，`display_phase=3.4` 和
+`display_status=readonly_boot_entry_with_local_fact_gate` 只表示 Web UI
+当前展示层已经包含本地事实门禁，不代表 Phase 3.3 运行时已解锁。
 
 `/api/boot-assets` 只扫描 `data/boot/loaders` 下固定白名单文件名，不下载、生成、上传、替换、删除或执行 boot loader。
 
