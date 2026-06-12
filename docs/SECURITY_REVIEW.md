@@ -155,6 +155,7 @@ bash -n scripts/preflight/check-network-safety.sh scripts/generate-ipxe-menu.sh 
 
 ```bash
 python3 -m py_compile apps/api/main.py apps/worker/scan_images.py
+python3 scripts/preflight/check-phase3-gates.py
 node --check apps/web/assets/app.js
 bash scripts/preflight/check-network-safety.sh
 docker compose config
@@ -167,6 +168,7 @@ Phase 3.6 收口补充验证，覆盖 Phase 3.4 本地事实门禁面板：
 
 ```bash
 python3 -m py_compile apps/api/main.py apps/worker/scan_images.py
+python3 scripts/preflight/check-phase3-gates.py
 node --check apps/web/assets/app.js
 bash scripts/preflight/check-network-safety.sh
 docker compose config
@@ -176,6 +178,7 @@ git diff --check
 
 补充 smoke test 覆盖：
 
+- `scripts/preflight/check-phase3-gates.py` 可重复校验以下只读门禁条件。
 - `phase=3.1` 仍表示后端只读模型阶段。
 - `display_phase=3.4` 和 `display_status` 仅表示 Web UI 只读展示阶段。
 - `phase3_3_gate.status=router_option_path_not_recommended_but_blocked`。

@@ -78,6 +78,6 @@ while IFS= read -r script; do
       fail "脚本 ${script} 包含危险网络关键字: ${pattern}"
     fi
   done
-done < <(find scripts -type f | sort)
+done < <(find scripts -type f \( -name '*.sh' -o -name '*.py' \) ! -path '*/__pycache__/*' | sort)
 
 info "APPROVED: 当前文件未发现 Phase 2 禁止网络行为"

@@ -2174,10 +2174,15 @@ curl http://localhost:18080/api/boot-entry
      和 ADMIN_GUIDE，明确 `/api/network-safety.phase3_gate` 与 Web UI
      “网络安全”页只同步展示 Phase 3.3 门禁，且不提供实现、服务启用或
      生产 LAN 测试授权。
+   - 本轮只读门禁预检：新增 `scripts/preflight/check-phase3-gates.py`，
+     可重复校验 `/api/boot-entry` 与 `/api/network-safety` 的 Phase 3
+     门禁字段仍为只读 blocked 状态，且实现、服务启用、生产 LAN 测试均
+     不允许。
    - 单台测试机验证 UEFI PXE IPv4。
    - 验证普通终端 DHCP、网关、内网和互联网不受影响。
    - 当前状态：已创建只读文档草案；真实测试机验证等待 Phase 3.3 门禁解除。
    - 本轮文档门禁同步验证记录：
+     - `python3 scripts/preflight/check-phase3-gates.py`
      - `bash scripts/preflight/check-network-safety.sh`
      - `docker compose config`
      - `ss -lntu | grep -E ':(67|68|69|4011)\b' || true`

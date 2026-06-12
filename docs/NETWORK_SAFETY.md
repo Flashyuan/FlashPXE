@@ -27,10 +27,13 @@ SynaBoot Phase 2 是零侵入 HTTP/iPXE Boot 平台，默认只开放 `18080/tcp
 
 ```bash
 bash scripts/preflight/check-network-safety.sh
+python3 scripts/preflight/check-phase3-gates.py
 docker compose config
 ```
 
-预检脚本只做只读检查，不会修改 LAN 配置。
+预检脚本只做只读检查，不会修改 LAN 配置。其中
+`check-phase3-gates.py` 只校验 `/api/boot-entry` 与
+`/api/network-safety` 的 Phase 3 门禁字段仍为只读 blocked 状态。
 
 ## Phase 3 门禁
 
