@@ -102,6 +102,11 @@ GET /api/boot-entry
         +--> Phase 3 回滚清单：PHASE3_ROLLBACK_CHECKLIST.md
         +--> Phase 3 审查模板：PHASE3_REVIEW_TEMPLATES.md
         +--> Phase 3.3 gate：router_option_path_not_recommended_but_blocked
+        |       |--> confirmed_evidence：已确认事实
+        |       |--> missing_local_facts：仍缺事实
+        |       |--> blocked_until：解除门禁前置条件
+        |       '--> do_not_infer：禁止推断
+        '--> Web UI 本地事实门禁面板
 
 GET /api/boot-assets
         |
@@ -130,6 +135,10 @@ Nginx `/boot/` 只允许精确访问：
 但当前未在管理界面中找到 DHCP Option `66/67` 或等价 boot option
 配置入口。因此 Phase 3.3 默认不依赖主路由 DHCP Option 路线，
 只允许继续受控 ProxyDHCP 可行性评估。
+`phase3_3_gate` 将这些事实拆成已确认事实、仍缺事实、解除门禁前置
+条件和禁止推断四类，只用于 Web UI 只读展示，防止后续把设备型号、
+硬件版本或固件版本误当成 DHCP Option `66/67`、next-server、
+Vendor Class 或 Client Architecture 可用证明。
 评估记录见 `docs/PROXYDHCP_FEASIBILITY.md`，该文档只定义问题清单、
 风险和门禁，不包含可执行服务配置。
 未来隔离验证的报文字段判读标准见 `docs/PROXYDHCP_PACKET_REVIEW.md`，
