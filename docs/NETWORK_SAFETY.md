@@ -37,6 +37,11 @@ docker compose config
 自动网络启动入口集成必须先完成 `BOOT_ENTRY_INTEGRATION.md` 中的
 本地只读设备能力确认。
 
-在确认 TL-ER6120T/TL-ER6120 的型号、硬件版本、固件版本、Option
-`66/67`、`next-server`、Vendor Class 和 Client Architecture 能力前，
-不得进入 TFTP/ProxyDHCP 设计或实现。
+已通过管理员只读截图确认设备为 `TL-ER6120T`，硬件版本为
+`TL-ER6120T 1.0`，当前固件为 `1.2.2 Build 240829 Rel.84642n`。
+管理员当前未找到 DHCP Option `66/67` 或等价 boot option 配置入口，
+因此默认不依赖主路由 DHCP Option 路线。
+
+在完成新的研究、安全审查和项目决策前，不得进入 TFTP/ProxyDHCP
+实施设计或实现。后续只允许受控 ProxyDHCP 可行性评估，且不得启用
+DHCP、ProxyDHCP、TFTP 或 UDP `67/68/69/4011` 服务。

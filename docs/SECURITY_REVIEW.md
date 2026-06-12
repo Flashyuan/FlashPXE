@@ -105,7 +105,9 @@ bash -n scripts/preflight/check-network-safety.sh scripts/generate-ipxe-menu.sh 
 
 ## Phase 3 只读启动入口审查
 
-当前状态：只读模型审查通过，Phase 3.3 继续保持 `BLOCKED`。
+当前状态：只读模型审查通过；TL-ER6120T 设备身份已由截图确认，
+主路由 DHCP Option `66/67` 路线当前不推荐依赖；Phase 3.3
+继续保持 `BLOCKED`，仅允许受控 ProxyDHCP 可行性评估。
 
 审查范围：
 
@@ -128,7 +130,12 @@ bash -n scripts/preflight/check-network-safety.sh scripts/generate-ipxe-menu.sh 
 - Boot loader 文件和父目录 symlink 不会被标记为可用。
 - Nginx `/boot/` 仅允许精确访问 `menu.ipxe` 和固定白名单 loader，其它路径返回 404，并启用 `disable_symlinks on`。
 - Web UI 仅展示门禁状态、文档路径和 loader 元数据，没有配置提交按钮或网络操作按钮。
-- Phase 3.3 等待本地只读确认 TP-Link 准确型号、硬件版本、固件版本、Option `66/67`、`next-server`、Vendor Class 和 Client Architecture 能力。
+- 已通过管理员只读截图确认 TP-Link 设备为 `TL-ER6120T`，硬件版本为
+  `TL-ER6120T 1.0`，当前固件为 `1.2.2 Build 240829 Rel.84642n`。
+- 管理员当前未找到 DHCP Option `66/67` 或等价 boot option 配置入口，
+  因此 Phase 3.3 默认不依赖主路由 DHCP Option 路线。
+- Phase 3.3 只允许继续受控 ProxyDHCP 可行性评估；不得实现、启用或测试
+  DHCP、ProxyDHCP、TFTP 或任何 UDP `67/68/69/4011` 服务。
 
 验证命令：
 
@@ -144,6 +151,7 @@ git diff --check
 
 后续门禁：
 
-- 未完成 `BOOT_ENTRY_LOCAL_VERIFICATION.md` 本地只读确认前，不得进入 Phase 3.3 实施设计。
+- Phase 3.3 继续保持 `BLOCKED`；不得进入实现、启用或生产 LAN 测试。
+  当前下一步仅限受控 ProxyDHCP 可行性评估。
 - 任何 DHCP boot option、ProxyDHCP、TFTP、UDP `67/68/69/4011`、端口、Compose、路由器或网关相关变更，必须重新经过 `research_agent`、`network_safety_agent`、`security_audit_agent` 和 `project_decision_agent` 审查。
 - 本记录不批准生产 LAN 自动网络启动集成。

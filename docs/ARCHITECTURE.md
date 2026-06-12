@@ -96,7 +96,7 @@ GET /api/boot-entry
         +--> 启动入口状态：HTTP IPv4 / PXE IPv4 / HTTP IPv6 / PXE IPv6
         +--> 文档入口：BOOT_ENTRY_INTEGRATION.md
         +--> 本地确认模板：BOOT_ENTRY_LOCAL_VERIFICATION.md
-        +--> Phase 3.3 gate：blocked_until_local_verification
+        +--> Phase 3.3 gate：router_option_path_not_recommended_but_blocked
 
 GET /api/boot-assets
         |
@@ -121,7 +121,14 @@ Nginx `/boot/` 只允许精确访问：
 
 其它 `/boot/` 路径返回 404，并启用 `disable_symlinks on`。
 
-Phase 3.3 继续保持 `BLOCKED`，直到管理员完成 `BOOT_ENTRY_LOCAL_VERIFICATION.md` 中的本地只读设备能力确认，并重新通过 `research_agent`、`network_safety_agent`、`security_audit_agent` 和 `project_decision_agent` 审查。
+管理员已通过只读截图确认 TL-ER6120T 设备身份、硬件版本和固件版本，
+但当前未在管理界面中找到 DHCP Option `66/67` 或等价 boot option
+配置入口。因此 Phase 3.3 默认不依赖主路由 DHCP Option 路线，
+只允许继续受控 ProxyDHCP 可行性评估。
+
+Phase 3.3 继续保持 `BLOCKED`。任何 TFTP/ProxyDHCP 设计、实验或实现前，
+都必须重新通过 `research_agent`、`network_safety_agent`、
+`security_audit_agent` 和 `project_decision_agent` 审查。
 
 当前架构仍不提供 DHCP、ProxyDHCP、TFTP，也不开放 UDP `67/68/69/4011`。
 

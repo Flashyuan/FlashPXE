@@ -992,13 +992,15 @@ def boot_entry_status() -> dict:
             "local_verification_template": {
                 "label": "Local TP-Link capability verification template",
                 "path": "docs/BOOT_ENTRY_LOCAL_VERIFICATION.md",
-                "purpose": "Administrator-filled readonly evidence record before Phase 3.3 can be reconsidered.",
+                "purpose": "Readonly evidence record for the TL-ER6120T constraint and Phase 3.3 gate.",
             },
         },
         "local_verification_template": "docs/BOOT_ENTRY_LOCAL_VERIFICATION.md",
         "phase3_3_gate": {
-            "status": "blocked_until_local_verification",
-            "reason": "TP-Link model, firmware, Option 66/67, next-server, Vendor Class, and Client Architecture support are not locally verified.",
+            "status": "router_option_path_not_recommended_but_blocked",
+            "reason": "TL-ER6120T identity is screenshot-confirmed, but the administrator cannot find DHCP Option 66/67 or equivalent boot option settings. Router DHCP Option path is not recommended; only controlled ProxyDHCP feasibility evaluation is allowed.",
+            "operational_assumption": "Do not rely on the main router DHCP Option 66/67 path unless later evidence proves it is available and safe.",
+            "allowed_next_step": "controlled_proxydhcp_feasibility_evaluation_only",
             "template": "docs/BOOT_ENTRY_LOCAL_VERIFICATION.md",
         },
         "server": {
@@ -1123,12 +1125,13 @@ def boot_entry_status() -> dict:
             ],
         },
         "local_verification_required": [
-            "Confirm exact TP-Link model, hardware version, and firmware version.",
-            "Confirm whether DHCP Option 66 and Option 67 are available.",
+            "Treat TL-ER6120T model, hardware version, and firmware version as screenshot-confirmed evidence.",
+            "Do not rely on the router DHCP Option 66/67 path unless later readonly evidence proves the settings exist and are safe.",
             "Confirm whether next-server / boot server is available.",
             "Confirm whether Vendor Class Option 60 can distinguish PXEClient and HTTPClient.",
             "Confirm whether Client Architecture Option 93 can distinguish BIOS and UEFI clients.",
-            "Validate DHCP offers in an isolated test VLAN or single-client lab before production use.",
+            "Keep Phase 3.3 blocked; only controlled ProxyDHCP feasibility evaluation may be researched next.",
+            "Validate any future boot metadata behavior only in an isolated test VLAN or single-client lab before production use.",
         ],
         "safety_gates": [
             "TP-Link 192.168.1.1 remains the only normal DHCP lease server.",

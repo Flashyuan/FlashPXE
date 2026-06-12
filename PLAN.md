@@ -2133,7 +2133,8 @@ curl http://localhost:18080/api/boot-entry
      - `rg -n "network_mode: host|privileged: true|67:|68:|69:|4011:|dnsmasq|proxydhcp|tftp|dhcp" docker-compose.yml scripts apps config docs PLAN.md README.md`
      - `git diff --check`
      - `boot_entry_status()` smoke test 覆盖 `documentation`、
-       `local_verification_template`、`phase3_3_gate.status=blocked_until_local_verification`
+       `local_verification_template`、
+       `phase3_3_gate.status=router_option_path_not_recommended_but_blocked`
        以及 DHCP/ProxyDHCP/TFTP 均为关闭。
 
 6. Phase 3.5：文档与验证
