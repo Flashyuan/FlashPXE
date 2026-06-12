@@ -27,20 +27,26 @@ Phase 3 自动网络启动入口仍处于门禁状态。
 
 ## Phase 3.3 门禁状态
 
-Phase 3.3 暂停，直到完成本地只读设备能力确认。
+Phase 3.3 暂停，当前不得进入生产可启用设计。
+
+管理员已通过只读截图确认设备为 `TL-ER6120T`，硬件版本为
+`TL-ER6120T 1.0`，当前固件为 `1.2.2 Build 240829 Rel.84642n`。
+但管理员当前未在管理界面中找到 DHCP Option `66/67` 或等价 boot option
+配置入口，因此 Phase 3.3 默认不依赖主路由 DHCP Option 路线。
+
+下一步只允许转入受控 ProxyDHCP 可行性评估，且不代表允许实现或启用
+ProxyDHCP、TFTP 或任何 DHCP 服务。
 
 必须先确认以下事实：
 
-- 当前设备准确型号是 `TL-ER6120T` 还是 `TL-ER6120`。
-- 硬件版本。
-- 固件版本。
 - DHCP 页面是否支持 Option `66`。
 - DHCP 页面是否支持 Option `67` 或等价 Boot File 字段。
 - 是否支持 `next-server`、boot server 或 `siaddr`。
 - 是否支持按 Vendor Class 区分 `PXEClient` 与 `HTTPClient`。
 - 是否支持按 Client Architecture 区分 BIOS PXE、UEFI PXE、UEFI HTTP Boot。
 
-在这些事实确认前，不得设计或实现生产可启用的 TFTP/ProxyDHCP 路线。
+在完成新的研究、安全审查和项目决策前，不得设计或实现生产可启用的
+TFTP/ProxyDHCP 路线。
 
 ## 管理员只读确认清单
 

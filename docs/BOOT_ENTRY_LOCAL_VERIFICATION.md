@@ -114,7 +114,13 @@ bootfile URL 能力：不确定。该截图未显示 HTTP Boot URL 字段
 Vendor Class 分流能力：不确定。该截图未显示 Vendor Class / Option 60 策略
 Client Architecture 分流能力：不确定。该截图未显示 Client Architecture / Option 93 策略
 是否足以进入隔离环境抓包验证：否。仍需只读确认 DHCP Option / boot metadata 配置能力
+运营假设：管理员当前未在 TL-ER6120T 管理界面中找到 DHCP Option 66/67 或等价 boot option 配置入口，因此 Phase 3.3 默认不依赖主路由 DHCP Option 66/67 路线
+后续方向：仅允许转入受控 ProxyDHCP 可行性评估；该方向仍不得实现、启用或测试任何 ProxyDHCP/TFTP/DHCP 服务
 ```
+
+该运营假设不等同于官方完整证明，也不代表已经完成隔离环境验证。
+它只用于避免继续把 Phase 3.3 规划建立在当前找不到配置入口的
+主路由 DHCP Option 路线上。
 
 ## 仍需补充的只读截图
 
@@ -160,3 +166,16 @@ Client Architecture 分流能力：不确定。该截图未显示 Client Archite
 - `project_decision_agent`：决定是否继续 TP-Link DHCP Boot Option 路线、继续阻塞或评估受控 ProxyDHCP。
 
 在这些审查完成前，Phase 3.3 继续保持 `BLOCKED`。
+
+即使后续进入受控 ProxyDHCP 可行性评估，也必须继续满足以下条件：
+
+- 不实现 ProxyDHCP。
+- 不启用 TFTP。
+- 不启用任何 DHCP 服务。
+- 不修改 TL-ER6120T 配置。
+- 不修改 OpenWrt 网关、路由、NAT、防火墙、DNS、VLAN 或 AP。
+- 不开放 UDP `67/68/69/4011`。
+- 不使用 Docker `network_mode: host`。
+- 不使用 Docker `privileged: true`。
+- TP-Link `192.168.1.1` 继续作为唯一 DHCP lease server。
+- OpenWrt `192.168.1.4` 继续作为默认网关。

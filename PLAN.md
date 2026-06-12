@@ -2040,6 +2040,9 @@ curl http://localhost:18080/api/boot-entry
 - 还未本地确认 TL-ER6120T 是否完整支持 Option 66、Option 67、
   next-server、Vendor Class 或 Client Architecture 区分；当前截图为软件升级页面，
   未显示 DHCP Option 或网络启动字段。
+- 管理员当前未在 TL-ER6120T 管理界面中找到 DHCP Option 66/67
+  或等价 boot option 配置入口，因此 Phase 3.3 默认不依赖主路由
+  DHCP Option 66/67 路线；该判断作为运营假设记录，不等同于官方完整证明。
 - `/api/boot-entry` 已实现 Phase 3.1 只读模型，所有启动入口与可选服务默认关闭。
 - 还未实现 TFTP/ProxyDHCP 可选模块。
 - Web UI 已新增“启动入口”只读展示页面。
@@ -2095,15 +2098,22 @@ curl http://localhost:18080/api/boot-entry
        `/boot/loaders/=404`、非白名单 loader `404`、symlink loader `403`。
 
 4. Phase 3.3：受控 TFTP/ProxyDHCP 方案设计
-   - 仅在 TP-Link DHCP boot option 能力不足时进入。
+   - 仅在 TP-Link DHCP boot option 能力不足或不可依赖时进入。
    - 是否进入该路径由 `project_decision_agent` 基于 `research_agent` 证据和安全审查结论决定。
-   - 当前状态：PARTIALLY_CONFIRMED_BUT_BLOCKED，已由截图确认 TP-Link
-     型号、硬件版本和软件版本；仍等待本地只读确认 Option 66/67、
-     next-server、Vendor Class 和 Client Architecture 能力。
+   - 当前状态：ROUTER_OPTION_PATH_NOT_RECOMMENDED_BUT_BLOCKED，已由截图确认
+     TP-Link 型号、硬件版本和软件版本；管理员当前未找到 Option 66/67
+     配置入口，因此默认不依赖主路由 DHCP Option 路线，下一步仅允许进入
+     受控 ProxyDHCP 可行性评估。
+   - 仍等待本地只读确认 next-server、Vendor Class、Client Architecture
+     等 boot metadata 能力；这些缺口不会解除 Phase 3.3 门禁。
    - 本地确认记录模板：`docs/BOOT_ENTRY_LOCAL_VERIFICATION.md`。
    - 默认关闭。
    - 不得分配 IP。
    - 不得修改网关、DNS、路由、防火墙。
+   - 不得实现或启用 ProxyDHCP/TFTP，不得开放 UDP `67/68/69/4011`，
+     不得修改 TL-ER6120T、OpenWrt 或 Docker 网络模式。
+   - TP-Link `192.168.1.1` 必须继续作为唯一 DHCP lease server；
+     OpenWrt `192.168.1.4` 必须继续作为默认网关。
    - 必须先通过 `network_safety_agent` 和 `security_audit_agent`。
 
 5. Phase 3.4：Web UI 启动入口集成页
