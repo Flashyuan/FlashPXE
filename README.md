@@ -38,7 +38,7 @@ Option 路线。
 - `docs/BOOT_ENTRY_INTEGRATION.md`：启动入口集成边界。
 - `docs/BOOT_ENTRY_LOCAL_VERIFICATION.md`：本地设备能力确认记录。
 - `docs/PROXYDHCP_FEASIBILITY.md`：受控 ProxyDHCP 可行性评估。
-- `docs/PROXYDHCP_PACKET_REVIEW.md`：未来隔离抓包判读标准。
+- `docs/PROXYDHCP_PACKET_REVIEW.md`：未来经审批隔离验证的报文字段判读标准。
 - `docs/TFTP_LOADER_SCOPE.md`：未来 TFTP loader 文件范围。
 - `docs/PHASE3_ROLLBACK_CHECKLIST.md`：Phase 3 回滚证据清单。
 - `docs/PHASE3_REVIEW_TEMPLATES.md`：网络安全与安全审计模板。
@@ -255,5 +255,10 @@ Windows ISO/WIM/ESD 不作为通用 iPXE 直接启动项。推荐先启动 HotPE
 - `docs/NETWORK_SAFETY.md`：网络安全边界。
 - `docs/BOOT_ENTRY_INTEGRATION.md`：Phase 3 启动入口集成门禁。
 - `docs/BOOT_ENTRY_LOCAL_VERIFICATION.md`：本地设备能力确认记录。
+- `docs/PROXYDHCP_FEASIBILITY.md`：受控 ProxyDHCP 可行性评估。
+- `docs/PROXYDHCP_PACKET_REVIEW.md`：未来经审批隔离验证的报文字段判读标准。
+- `docs/TFTP_LOADER_SCOPE.md`：未来 TFTP loader 文件范围。
+- `docs/PHASE3_ROLLBACK_CHECKLIST.md`：Phase 3 回滚证据清单。
+- `docs/PHASE3_REVIEW_TEMPLATES.md`：网络安全与安全审计模板。
 - `docs/HOTPE_INTEGRATION.md`：HotPE 集成说明。
 - `docs/IMAGE_FACTORY.md`：镜像工厂说明。

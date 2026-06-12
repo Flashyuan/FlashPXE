@@ -50,7 +50,7 @@ Phase 3.3 相关文档只作为门禁和审查材料：
 
 - `BOOT_ENTRY_LOCAL_VERIFICATION.md`：本地设备能力确认记录。
 - `PROXYDHCP_FEASIBILITY.md`：受控 ProxyDHCP 可行性评估。
-- `PROXYDHCP_PACKET_REVIEW.md`：未来隔离抓包判读标准。
+- `PROXYDHCP_PACKET_REVIEW.md`：未来经审批隔离验证的报文字段判读标准。
 - `TFTP_LOADER_SCOPE.md`：未来 TFTP loader 文件范围。
 - `PHASE3_ROLLBACK_CHECKLIST.md`：Phase 3 回滚证据清单。
 - `PHASE3_REVIEW_TEMPLATES.md`：网络安全与安全审计模板。

@@ -186,11 +186,11 @@ Phase 3 自动网络启动入口仍处于门禁状态。管理员只读确认清
 默认不依赖主路由 DHCP Option 路线，后续只允许 documentation-only 的
 受控 ProxyDHCP 可行性评估。
 
-只读参考文档：
+只读参考文档与本文位于同一 `docs/` 目录：
 
 - `BOOT_ENTRY_LOCAL_VERIFICATION.md`：本地设备能力确认记录。
 - `PROXYDHCP_FEASIBILITY.md`：受控 ProxyDHCP 可行性评估。
-- `PROXYDHCP_PACKET_REVIEW.md`：未来隔离抓包判读标准。
+- `PROXYDHCP_PACKET_REVIEW.md`：未来经审批隔离验证的报文字段判读标准。
 - `TFTP_LOADER_SCOPE.md`：未来 TFTP loader 文件范围。
 - `PHASE3_ROLLBACK_CHECKLIST.md`：Phase 3 回滚证据清单。
 - `PHASE3_REVIEW_TEMPLATES.md`：网络安全与安全审计模板。
