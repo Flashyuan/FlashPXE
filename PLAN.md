@@ -2170,6 +2170,10 @@ curl http://localhost:18080/api/boot-entry
      Phase 3.3 blocked 门禁。
    - 已更新 README/ADMIN_GUIDE/NETWORK_SAFETY，记录 TL-ER6120T 当前不采用
      主路由 DHCP Option `66/67` 路线，并补充 Phase 3.3 只读文档导航。
+   - 本轮文档同步：已更新 ARCHITECTURE、SECURITY_REVIEW、NETWORK_SAFETY
+     和 ADMIN_GUIDE，明确 `/api/network-safety.phase3_gate` 与 Web UI
+     “网络安全”页只同步展示 Phase 3.3 门禁，且不提供实现、服务启用或
+     生产 LAN 测试授权。
    - 单台测试机验证 UEFI PXE IPv4。
    - 验证普通终端 DHCP、网关、内网和互联网不受影响。
    - 当前状态：已创建只读文档草案；真实测试机验证等待 Phase 3.3 门禁解除。

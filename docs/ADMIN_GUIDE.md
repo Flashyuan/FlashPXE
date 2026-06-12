@@ -186,6 +186,11 @@ Phase 3 自动网络启动入口仍处于门禁状态。管理员只读确认清
 默认不依赖主路由 DHCP Option 路线，后续只允许 documentation-only 的
 受控 ProxyDHCP 可行性评估。
 
+Web UI 的“启动入口”页展示本地事实门禁，“网络安全”页通过
+`/api/network-safety.phase3_gate` 同步展示 Phase 3.3 门禁。两处都只是
+只读提醒，不提供路由器配置、服务启用或生产 LAN 测试入口；其中允许实现、
+允许启用服务、允许生产 LAN 测试均应保持为 `False`。
+
 只读参考文档与本文位于同一 `docs/` 目录：
 
 - `BOOT_ENTRY_LOCAL_VERIFICATION.md`：本地设备能力确认记录。

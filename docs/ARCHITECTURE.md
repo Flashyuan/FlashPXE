@@ -116,12 +116,24 @@ GET /api/boot-assets
         +--> 固定白名单 loader 元数据
         +--> ipxe.efi / snponly.efi / undionly.kpxe / ipxe.iso
         +--> symlink 与父目录 symlink 均不标记为可用
+
+GET /api/network-safety
+        |
+        +--> phase3_gate：同步展示 Phase 3.3 门禁
+        +--> status=router_option_path_not_recommended_but_blocked
+        +--> allowed_next_step=controlled_proxydhcp_feasibility_evaluation_only
+        +--> implementation_allowed=false
+        +--> service_enablement_allowed=false
+        '--> production_lan_testing_allowed=false
 ```
 
 `/api/boot-entry` 不写入配置，不启用服务，不修改网络设备。
 其中 `phase=3.1` 表示后端只读模型阶段，`display_phase=3.4` 和
 `display_status=readonly_boot_entry_with_local_fact_gate` 只表示 Web UI
 当前展示层已经包含本地事实门禁，不代表 Phase 3.3 运行时已解锁。
+
+`/api/network-safety` 的 `phase3_gate` 只把同一门禁状态同步到网络安全页。
+它不提供写接口，不启用 DHCP、ProxyDHCP、TFTP，也不批准生产 LAN 测试。
 
 `/api/boot-assets` 只扫描 `data/boot/loaders` 下固定白名单文件名，不下载、生成、上传、替换、删除或执行 boot loader。
 

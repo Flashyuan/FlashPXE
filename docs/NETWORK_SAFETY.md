@@ -58,6 +58,17 @@ Web UI 的“本地事实门禁”面板只展示以下只读信息：
 DHCP Option `66/67`、next-server、Vendor Class 或 Client Architecture
 可用证明。
 
+Web UI 的“网络安全”页也会通过 `/api/network-safety.phase3_gate`
+同步展示同一门禁状态：
+
+- `status=router_option_path_not_recommended_but_blocked`。
+- `allowed_next_step=controlled_proxydhcp_feasibility_evaluation_only`。
+- `implementation_allowed=false`。
+- `service_enablement_allowed=false`。
+- `production_lan_testing_allowed=false`。
+
+该展示只用于提醒当前禁止范围，不代表 Phase 3.3 运行时已解锁。
+
 Phase 3.3 相关文档只作为门禁和审查材料：
 
 - `BOOT_ENTRY_LOCAL_VERIFICATION.md`：本地设备能力确认记录。

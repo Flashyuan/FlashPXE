@@ -113,8 +113,10 @@ bash -n scripts/preflight/check-network-safety.sh scripts/generate-ipxe-menu.sh 
 
 - `/api/boot-entry` 只读启动入口状态模型。
 - `/api/boot-assets` 固定白名单 boot loader 元数据清单。
+- `/api/network-safety.phase3_gate` 只读网络安全门禁摘要。
 - Web UI “启动入口”只读展示页。
 - Web UI “本地事实门禁”只读展示面板。
+- Web UI “网络安全”只读门禁展示。
 - Nginx `/boot/` 静态服务白名单。
 - `BOOT_ENTRY_RESEARCH.md`、`BOOT_ENTRY_INTEGRATION.md`、
   `BOOT_ENTRY_LOCAL_VERIFICATION.md`。
@@ -136,6 +138,10 @@ bash -n scripts/preflight/check-network-safety.sh scripts/generate-ipxe-menu.sh 
 - Nginx `/boot/` 仅允许精确访问 `menu.ipxe` 和固定白名单 loader，其它路径返回 404，并启用 `disable_symlinks on`。
 - Web UI 仅展示门禁状态、文档路径、loader 元数据和本地事实门禁，
   没有配置提交按钮或网络操作按钮；所有新增门禁文本经前端转义后渲染。
+- `/api/network-safety` 仅新增只读 `phase3_gate`，同步展示 Phase 3.3
+  门禁状态、下一步范围和三个禁止标志，不新增写接口或服务启用入口。
+- Web UI “网络安全”页只展示 `phase3_gate`，其中允许实现、允许启用服务、
+  允许生产 LAN 测试均为 `False`。
 - 已通过管理员只读截图确认 TP-Link 设备为 `TL-ER6120T`，硬件版本为
   `TL-ER6120T 1.0`，当前固件为 `1.2.2 Build 240829 Rel.84642n`。
 - 管理员当前未找到 DHCP Option `66/67` 或等价 boot option 配置入口，
@@ -173,6 +179,7 @@ git diff --check
 - `phase=3.1` 仍表示后端只读模型阶段。
 - `display_phase=3.4` 和 `display_status` 仅表示 Web UI 只读展示阶段。
 - `phase3_3_gate.status=router_option_path_not_recommended_but_blocked`。
+- `/api/network-safety.phase3_gate.status=router_option_path_not_recommended_but_blocked`。
 - `confirmed_evidence`、`missing_local_facts`、`blocked_until`、
   `do_not_infer` 均存在。
 - DHCP、ProxyDHCP、TFTP 状态仍为关闭。
