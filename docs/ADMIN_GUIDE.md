@@ -181,6 +181,20 @@ curl http://localhost:18080/boot/menu.ipxe
 Phase 3 自动网络启动入口仍处于门禁状态。管理员只读确认清单见
 `BOOT_ENTRY_INTEGRATION.md`。
 
+当前已根据管理员截图确认主路由为 TP-Link `TL-ER6120T`，但管理员未在
+管理界面找到 DHCP Option `66/67` 或等价 boot option 配置入口。因此
+默认不依赖主路由 DHCP Option 路线，后续只允许 documentation-only 的
+受控 ProxyDHCP 可行性评估。
+
+只读参考文档：
+
+- `BOOT_ENTRY_LOCAL_VERIFICATION.md`：本地设备能力确认记录。
+- `PROXYDHCP_FEASIBILITY.md`：受控 ProxyDHCP 可行性评估。
+- `PROXYDHCP_PACKET_REVIEW.md`：未来隔离抓包判读标准。
+- `TFTP_LOADER_SCOPE.md`：未来 TFTP loader 文件范围。
+- `PHASE3_ROLLBACK_CHECKLIST.md`：Phase 3 回滚证据清单。
+- `PHASE3_REVIEW_TEMPLATES.md`：网络安全与安全审计模板。
+
 提供给用户的 iPXE chain 地址：
 
 ```text

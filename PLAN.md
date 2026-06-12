@@ -2155,7 +2155,8 @@ curl http://localhost:18080/api/boot-entry
    - 更新 `docs/ARCHITECTURE.md`，固化 Phase 3 只读启动入口模型、
      `/api/boot-entry`、`/api/boot-assets`、Nginx `/boot/` 精确白名单和
      Phase 3.3 blocked 门禁。
-   - 更新 README/ADMIN_GUIDE/NETWORK_SAFETY。
+   - 已更新 README/ADMIN_GUIDE/NETWORK_SAFETY，记录 TL-ER6120T 当前不采用
+     主路由 DHCP Option `66/67` 路线，并补充 Phase 3.3 只读文档导航。
    - 单台测试机验证 UEFI PXE IPv4。
    - 验证普通终端 DHCP、网关、内网和互联网不受影响。
    - 当前状态：已创建只读文档草案；真实测试机验证等待 Phase 3.3 门禁解除。

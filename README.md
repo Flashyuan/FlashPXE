@@ -28,8 +28,20 @@ SynaBoot 不接管现有局域网。
 
 普通网卡 PXE 自动发现不属于零侵入模式。用户需要使用 iPXE 启动介质、手动 UEFI HTTP Boot，或由外部管理员已经配置好的 chain 入口访问 SynaBoot 菜单。
 
-Phase 3 自动网络启动入口仍处于门禁状态。只读确认清单见
-`docs/BOOT_ENTRY_INTEGRATION.md`。
+Phase 3 自动网络启动入口仍处于门禁状态。已根据管理员只读截图确认
+主路由为 TP-Link `TL-ER6120T`，当前未在管理界面找到 DHCP Option
+`66/67` 或等价 boot option 配置入口，因此默认不依赖主路由 DHCP
+Option 路线。
+
+相关只读文档：
+
+- `docs/BOOT_ENTRY_INTEGRATION.md`：启动入口集成边界。
+- `docs/BOOT_ENTRY_LOCAL_VERIFICATION.md`：本地设备能力确认记录。
+- `docs/PROXYDHCP_FEASIBILITY.md`：受控 ProxyDHCP 可行性评估。
+- `docs/PROXYDHCP_PACKET_REVIEW.md`：未来隔离抓包判读标准。
+- `docs/TFTP_LOADER_SCOPE.md`：未来 TFTP loader 文件范围。
+- `docs/PHASE3_ROLLBACK_CHECKLIST.md`：Phase 3 回滚证据清单。
+- `docs/PHASE3_REVIEW_TEMPLATES.md`：网络安全与安全审计模板。
 
 ## 部署
 
@@ -241,5 +253,7 @@ Windows ISO/WIM/ESD 不作为通用 iPXE 直接启动项。推荐先启动 HotPE
 - `docs/USER_GUIDE.md`：用户启动电脑、选择系统和安装系统教程。
 - `docs/ARCHITECTURE.md`：架构说明与图例。
 - `docs/NETWORK_SAFETY.md`：网络安全边界。
+- `docs/BOOT_ENTRY_INTEGRATION.md`：Phase 3 启动入口集成门禁。
+- `docs/BOOT_ENTRY_LOCAL_VERIFICATION.md`：本地设备能力确认记录。
 - `docs/HOTPE_INTEGRATION.md`：HotPE 集成说明。
 - `docs/IMAGE_FACTORY.md`：镜像工厂说明。
