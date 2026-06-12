@@ -994,6 +994,11 @@ def boot_entry_status() -> dict:
                 "path": "docs/BOOT_ENTRY_LOCAL_VERIFICATION.md",
                 "purpose": "Readonly evidence record for the TL-ER6120T constraint and Phase 3.3 gate.",
             },
+            "proxydhcp_feasibility": {
+                "label": "Controlled ProxyDHCP feasibility evaluation",
+                "path": "docs/PROXYDHCP_FEASIBILITY.md",
+                "purpose": "Documentation-only Phase 3.3 feasibility gate. No implementation or service enablement is approved.",
+            },
         },
         "local_verification_template": "docs/BOOT_ENTRY_LOCAL_VERIFICATION.md",
         "phase3_3_gate": {
@@ -1002,6 +1007,21 @@ def boot_entry_status() -> dict:
             "operational_assumption": "Do not rely on the main router DHCP Option 66/67 path unless later evidence proves it is available and safe.",
             "allowed_next_step": "controlled_proxydhcp_feasibility_evaluation_only",
             "template": "docs/BOOT_ENTRY_LOCAL_VERIFICATION.md",
+        },
+        "phase3_3_feasibility": {
+            "mode": "documentation_only",
+            "status": "blocked_for_implementation",
+            "candidate": "proxydhcp_metadata_only",
+            "doc": "docs/PROXYDHCP_FEASIBILITY.md",
+            "implementation_allowed": False,
+            "service_enablement_allowed": False,
+            "production_lan_testing_allowed": False,
+            "required_gates": [
+                "research_agent",
+                "network_safety_agent",
+                "security_audit_agent",
+                "project_decision_agent",
+            ],
         },
         "server": {
             "server_ip": SERVER_IP,

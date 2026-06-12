@@ -277,6 +277,7 @@ function renderBootEntry() {
   const documentation = bootEntry.documentation || {};
   const docItems = [
     documentation.local_verification_template,
+    documentation.proxydhcp_feasibility,
     documentation.integration_guide,
   ].filter(Boolean);
   const summary = [

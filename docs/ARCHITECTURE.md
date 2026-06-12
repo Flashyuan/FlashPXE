@@ -96,6 +96,7 @@ GET /api/boot-entry
         +--> 启动入口状态：HTTP IPv4 / PXE IPv4 / HTTP IPv6 / PXE IPv6
         +--> 文档入口：BOOT_ENTRY_INTEGRATION.md
         +--> 本地确认模板：BOOT_ENTRY_LOCAL_VERIFICATION.md
+        +--> ProxyDHCP 可行性评估：PROXYDHCP_FEASIBILITY.md
         +--> Phase 3.3 gate：router_option_path_not_recommended_but_blocked
 
 GET /api/boot-assets
@@ -125,6 +126,8 @@ Nginx `/boot/` 只允许精确访问：
 但当前未在管理界面中找到 DHCP Option `66/67` 或等价 boot option
 配置入口。因此 Phase 3.3 默认不依赖主路由 DHCP Option 路线，
 只允许继续受控 ProxyDHCP 可行性评估。
+评估记录见 `docs/PROXYDHCP_FEASIBILITY.md`，该文档只定义问题清单、
+风险和门禁，不包含可执行服务配置。
 
 Phase 3.3 继续保持 `BLOCKED`。任何 TFTP/ProxyDHCP 设计、实验或实现前，
 都必须重新通过 `research_agent`、`network_safety_agent`、

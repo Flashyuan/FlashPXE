@@ -37,6 +37,8 @@ Phase 3.3 暂停，当前不得进入生产可启用设计。
 下一步只允许转入受控 ProxyDHCP 可行性评估，且不代表允许实现或启用
 ProxyDHCP、TFTP 或任何 DHCP 服务。
 
+评估记录见 `PROXYDHCP_FEASIBILITY.md`。
+
 必须先确认以下事实：
 
 - DHCP 页面是否支持 Option `66`。
