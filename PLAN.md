@@ -2033,8 +2033,13 @@ curl http://localhost:18080/api/boot-entry
 
 当前已知限制：
 
-- 还未本地确认 TP-Link 设备准确型号、硬件版本和固件版本。
-- 还未本地确认 TL-ER6120T/TL-ER6120 是否完整支持 Option 66、Option 67、next-server、Vendor Class 或 Client Architecture 区分。
+- 已根据管理员提供的只读截图确认 TP-Link 设备准确型号为 `TL-ER6120T`，
+  硬件版本为 `TL-ER6120T 1.0`，当前软件版本为
+  `1.2.2 Build 240829 Rel.84642n`，页面显示最新软件版本为
+  `1.2.3 Build 250812 Rel.80372n`。
+- 还未本地确认 TL-ER6120T 是否完整支持 Option 66、Option 67、
+  next-server、Vendor Class 或 Client Architecture 区分；当前截图为软件升级页面，
+  未显示 DHCP Option 或网络启动字段。
 - `/api/boot-entry` 已实现 Phase 3.1 只读模型，所有启动入口与可选服务默认关闭。
 - 还未实现 TFTP/ProxyDHCP 可选模块。
 - Web UI 已新增“启动入口”只读展示页面。
@@ -2092,9 +2097,9 @@ curl http://localhost:18080/api/boot-entry
 4. Phase 3.3：受控 TFTP/ProxyDHCP 方案设计
    - 仅在 TP-Link DHCP boot option 能力不足时进入。
    - 是否进入该路径由 `project_decision_agent` 基于 `research_agent` 证据和安全审查结论决定。
-   - 当前状态：BLOCKED，等待本地只读确认 TP-Link 准确型号、硬件版本、
-     固件版本、Option 66/67、next-server、Vendor Class 和 Client
-     Architecture 能力。
+   - 当前状态：PARTIALLY_CONFIRMED_BUT_BLOCKED，已由截图确认 TP-Link
+     型号、硬件版本和软件版本；仍等待本地只读确认 Option 66/67、
+     next-server、Vendor Class 和 Client Architecture 能力。
    - 本地确认记录模板：`docs/BOOT_ENTRY_LOCAL_VERIFICATION.md`。
    - 默认关闭。
    - 不得分配 IP。
