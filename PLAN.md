@@ -2143,6 +2143,9 @@ curl http://localhost:18080/api/boot-entry
    - 本轮 UI 状态文案同步：Web UI “启动入口”页面副标题已从 Phase 3.1
      只读模型更新为 Phase 3.4 只读启动入口与本地事实门禁，避免用户或
      后续 agent 误判页面能力边界。
+   - 本轮 API/UI 摘要同步：`/api/boot-entry` 保留 `phase=3.1` 作为只读模型
+     阶段，同时新增 `display_phase=3.4` 与 `display_status`；Web UI 摘要
+     区分“模型阶段”和“展示阶段”，避免把 Phase 3.4 展示误读为运行时解锁。
    - 本轮只读展示增强验证记录：
      - `python3 -m py_compile apps/api/main.py apps/worker/scan_images.py`
      - `node --check apps/web/assets/app.js`

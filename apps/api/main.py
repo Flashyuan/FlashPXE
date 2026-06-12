@@ -976,6 +976,8 @@ def boot_entry_status() -> dict:
     return {
         "schema_version": "boot-entry.v1",
         "phase": "3.1",
+        "display_phase": "3.4",
+        "display_status": "readonly_boot_entry_with_local_fact_gate",
         "mode": "readonly_display_only",
         "status": "READONLY_MODEL_ONLY",
         "enabled": False,

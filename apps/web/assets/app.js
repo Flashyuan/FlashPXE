@@ -286,7 +286,9 @@ function renderBootEntry() {
     documentation.integration_guide,
   ].filter(Boolean);
   const summary = [
-    ["阶段", bootEntry.phase || ""],
+    ["模型阶段", bootEntry.phase || ""],
+    ["展示阶段", bootEntry.display_phase || ""],
+    ["展示状态", bootEntry.display_status || ""],
     ["模式", bootEntry.mode || ""],
     ["状态", bootEntry.status || ""],
     ["Phase 3.3", bootEntry.phase3_3_gate?.status || ""],
