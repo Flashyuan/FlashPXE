@@ -999,6 +999,11 @@ def boot_entry_status() -> dict:
                 "path": "docs/PROXYDHCP_FEASIBILITY.md",
                 "purpose": "Documentation-only Phase 3.3 feasibility gate. No implementation or service enablement is approved.",
             },
+            "proxydhcp_packet_review": {
+                "label": "ProxyDHCP packet review checklist",
+                "path": "docs/PROXYDHCP_PACKET_REVIEW.md",
+                "purpose": "Documentation-only field allow/deny checklist for future isolated verification.",
+            },
         },
         "local_verification_template": "docs/BOOT_ENTRY_LOCAL_VERIFICATION.md",
         "phase3_3_gate": {
@@ -1013,6 +1018,7 @@ def boot_entry_status() -> dict:
             "status": "blocked_for_implementation",
             "candidate": "proxydhcp_metadata_only",
             "doc": "docs/PROXYDHCP_FEASIBILITY.md",
+            "packet_review_doc": "docs/PROXYDHCP_PACKET_REVIEW.md",
             "implementation_allowed": False,
             "service_enablement_allowed": False,
             "production_lan_testing_allowed": False,

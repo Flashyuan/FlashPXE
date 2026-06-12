@@ -2109,6 +2109,8 @@ curl http://localhost:18080/api/boot-entry
    - 本地确认记录模板：`docs/BOOT_ENTRY_LOCAL_VERIFICATION.md`。
    - 受控 ProxyDHCP 可行性评估文档：`docs/PROXYDHCP_FEASIBILITY.md`。
      当前仅达到 `G0_DOCUMENTATION_ONLY`，不批准实现、启用或生产 LAN 测试。
+   - ProxyDHCP 报文字段与抓包判读清单：`docs/PROXYDHCP_PACKET_REVIEW.md`。
+     当前仅用于未来隔离验证的判读标准，不包含抓包或启服务命令。
    - 默认关闭。
    - 不得分配 IP。
    - 不得修改网关、DNS、路由、防火墙。
@@ -2126,7 +2128,7 @@ curl http://localhost:18080/api/boot-entry
    - 本轮只读展示增强：`/api/boot-entry` 返回 `documentation`、
      `local_verification_template`、`phase3_3_gate` 和
      `phase3_3_feasibility`，Web UI 展示本地确认模板、受控 ProxyDHCP
-     可行性评估、集成说明和 Phase 3.3 blocked 状态。
+     可行性评估、报文判读清单、集成说明和 Phase 3.3 blocked 状态。
    - 本轮只读展示增强验证记录：
      - `python3 -m py_compile apps/api/main.py apps/worker/scan_images.py`
      - `node --check apps/web/assets/app.js`

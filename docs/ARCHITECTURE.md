@@ -97,6 +97,7 @@ GET /api/boot-entry
         +--> 文档入口：BOOT_ENTRY_INTEGRATION.md
         +--> 本地确认模板：BOOT_ENTRY_LOCAL_VERIFICATION.md
         +--> ProxyDHCP 可行性评估：PROXYDHCP_FEASIBILITY.md
+        +--> ProxyDHCP 报文判读：PROXYDHCP_PACKET_REVIEW.md
         +--> Phase 3.3 gate：router_option_path_not_recommended_but_blocked
 
 GET /api/boot-assets
@@ -128,6 +129,8 @@ Nginx `/boot/` 只允许精确访问：
 只允许继续受控 ProxyDHCP 可行性评估。
 评估记录见 `docs/PROXYDHCP_FEASIBILITY.md`，该文档只定义问题清单、
 风险和门禁，不包含可执行服务配置。
+未来隔离验证的报文字段判读标准见 `docs/PROXYDHCP_PACKET_REVIEW.md`，
+该文档只定义允许/禁止字段和判读结论。
 
 Phase 3.3 继续保持 `BLOCKED`。任何 TFTP/ProxyDHCP 设计、实验或实现前，
 都必须重新通过 `research_agent`、`network_safety_agent`、
