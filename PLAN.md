@@ -2140,6 +2140,9 @@ curl http://localhost:18080/api/boot-entry
      解除门禁前置条件和禁止推断列表，Web UI 展示“本地事实门禁”面板，
      用于防止后续接力误把 TL-ER6120T 型号或固件信息当成 Option 66/67
      可用证明。
+   - 本轮 UI 状态文案同步：Web UI “启动入口”页面副标题已从 Phase 3.1
+     只读模型更新为 Phase 3.4 只读启动入口与本地事实门禁，避免用户或
+     后续 agent 误判页面能力边界。
    - 本轮只读展示增强验证记录：
      - `python3 -m py_compile apps/api/main.py apps/worker/scan_images.py`
      - `node --check apps/web/assets/app.js`

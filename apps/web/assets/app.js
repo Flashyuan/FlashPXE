@@ -3,7 +3,7 @@ const titles = {
   images: ["镜像仓库", "从 data/images 扫描得到的本地镜像元数据"],
   menu: ["菜单预览", "当前生成的 iPXE HTTP Boot 菜单"],
   hotpe: ["HotPE 指南", "通过 HotPE 访问 Windows 镜像仓库"],
-  "boot-entry": ["启动入口", "Phase 3.1 只读启动入口模型"],
+  "boot-entry": ["启动入口", "Phase 3.4 只读启动入口与本地事实门禁"],
   jobs: ["构建任务", "只生成模板与任务目录，不执行破坏性操作"],
   safety: ["网络安全", "已批准范围：仅 HTTP 18080/tcp"],
 };
