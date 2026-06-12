@@ -46,6 +46,18 @@ docker compose config
 实施设计或实现。后续只允许受控 ProxyDHCP 可行性评估，且不得启用
 DHCP、ProxyDHCP、TFTP 或 UDP `67/68/69/4011` 服务。
 
+Web UI 的“本地事实门禁”面板只展示以下只读信息：
+
+- 已确认事实。
+- 仍缺事实。
+- 解除门禁前置条件。
+- 禁止推断。
+
+该面板不包含配置提交按钮、路由器操作步骤、服务启用入口或生产 LAN
+测试授权。它的目的只是防止后续误把设备型号、硬件版本或固件版本当成
+DHCP Option `66/67`、next-server、Vendor Class 或 Client Architecture
+可用证明。
+
 Phase 3.3 相关文档只作为门禁和审查材料：
 
 - `BOOT_ENTRY_LOCAL_VERIFICATION.md`：本地设备能力确认记录。

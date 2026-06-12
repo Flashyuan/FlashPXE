@@ -114,6 +114,7 @@ bash -n scripts/preflight/check-network-safety.sh scripts/generate-ipxe-menu.sh 
 - `/api/boot-entry` 只读启动入口状态模型。
 - `/api/boot-assets` 固定白名单 boot loader 元数据清单。
 - Web UI “启动入口”只读展示页。
+- Web UI “本地事实门禁”只读展示面板。
 - Nginx `/boot/` 静态服务白名单。
 - `BOOT_ENTRY_RESEARCH.md`、`BOOT_ENTRY_INTEGRATION.md`、
   `BOOT_ENTRY_LOCAL_VERIFICATION.md`。
@@ -126,14 +127,19 @@ bash -n scripts/preflight/check-network-safety.sh scripts/generate-ipxe-menu.sh 
 - 未开放 UDP `67/68/69/4011`。
 - 未修改 TP-Link、OpenWrt、交换机、AP、VLAN、DNS、路由、防火墙或网关。
 - `/api/boot-entry` 只返回只读状态、文档入口、待确认项和安全门禁。
+- `/api/boot-entry` 的 `phase3_3_gate` 只新增已确认事实、仍缺事实、
+  解除门禁前置条件和禁止推断列表，不新增写接口或启用入口。
 - `/api/boot-assets` 只扫描固定白名单 loader 文件名，不下载、生成、替换、删除或执行 loader。
 - Boot loader 文件和父目录 symlink 不会被标记为可用。
 - Nginx `/boot/` 仅允许精确访问 `menu.ipxe` 和固定白名单 loader，其它路径返回 404，并启用 `disable_symlinks on`。
-- Web UI 仅展示门禁状态、文档路径和 loader 元数据，没有配置提交按钮或网络操作按钮。
+- Web UI 仅展示门禁状态、文档路径、loader 元数据和本地事实门禁，
+  没有配置提交按钮或网络操作按钮；所有新增门禁文本经前端转义后渲染。
 - 已通过管理员只读截图确认 TP-Link 设备为 `TL-ER6120T`，硬件版本为
   `TL-ER6120T 1.0`，当前固件为 `1.2.2 Build 240829 Rel.84642n`。
 - 管理员当前未找到 DHCP Option `66/67` 或等价 boot option 配置入口，
   因此 Phase 3.3 默认不依赖主路由 DHCP Option 路线。
+- 不能仅凭 TL-ER6120T 型号或固件版本推断 Option `66/67`、next-server、
+  Vendor Class 或 Client Architecture 可用。
 - Phase 3.3 只允许继续受控 ProxyDHCP 可行性评估；不得实现、启用或测试
   DHCP、ProxyDHCP、TFTP 或任何 UDP `67/68/69/4011` 服务。
 
@@ -148,6 +154,26 @@ ss -lntu | grep -E ':(67|68|69|4011)\b' || true
 rg -n "network_mode: host|privileged: true|67:|68:|69:|4011:|dnsmasq|proxydhcp|tftp|dhcp" docker-compose.yml scripts apps config docs PLAN.md README.md
 git diff --check
 ```
+
+Phase 3.6 收口补充验证，覆盖 Phase 3.4 本地事实门禁面板：
+
+```bash
+python3 -m py_compile apps/api/main.py apps/worker/scan_images.py
+node --check apps/web/assets/app.js
+bash scripts/preflight/check-network-safety.sh
+docker compose config
+ss -lntu | grep -E ':(67|68|69|4011)\b' || true
+git diff --check
+```
+
+补充 smoke test 覆盖：
+
+- `phase3_3_gate.status=router_option_path_not_recommended_but_blocked`。
+- `confirmed_evidence`、`missing_local_facts`、`blocked_until`、
+  `do_not_infer` 均存在。
+- DHCP、ProxyDHCP、TFTP 状态仍为关闭。
+- `implementation_allowed`、`service_enablement_allowed`、
+  `production_lan_testing_allowed` 仍为 `False`。
 
 后续门禁：
 

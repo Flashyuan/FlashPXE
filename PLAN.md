@@ -2189,6 +2189,9 @@ curl http://localhost:18080/api/boot-entry
    - `git_audit_agent` 审查 diff、验证记录和敏感信息。
    - 审计通过后创建本地 commit。
    - `project_decision_agent` 确认阶段方向后，由 `git_audit_agent` 自动 push 当前 GitHub 分支。
+   - 本轮 Phase 3.6 收口补充：已将 Phase 3.4 “本地事实门禁”只读面板的
+     审查结论、验证命令和禁止推断边界同步到 `docs/SECURITY_REVIEW.md`
+     与 `docs/NETWORK_SAFETY.md`。
 
 ### 22.3 GitHub 推送策略
 
