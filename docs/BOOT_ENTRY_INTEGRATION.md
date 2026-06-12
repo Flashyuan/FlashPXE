@@ -38,7 +38,8 @@ Phase 3.3 暂停，当前不得进入生产可启用设计。
 ProxyDHCP、TFTP 或任何 DHCP 服务。
 
 评估记录见 `PROXYDHCP_FEASIBILITY.md`；未来隔离验证的报文字段判读标准见
-`PROXYDHCP_PACKET_REVIEW.md`。
+`PROXYDHCP_PACKET_REVIEW.md`；TFTP loader 文件范围见
+`TFTP_LOADER_SCOPE.md`。
 
 必须先确认以下事实：
 

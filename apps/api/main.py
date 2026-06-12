@@ -1004,6 +1004,11 @@ def boot_entry_status() -> dict:
                 "path": "docs/PROXYDHCP_PACKET_REVIEW.md",
                 "purpose": "Documentation-only field allow/deny checklist for future isolated verification.",
             },
+            "tftp_loader_scope": {
+                "label": "TFTP loader scope",
+                "path": "docs/TFTP_LOADER_SCOPE.md",
+                "purpose": "Documentation-only fixed loader allowlist for future isolated verification.",
+            },
         },
         "local_verification_template": "docs/BOOT_ENTRY_LOCAL_VERIFICATION.md",
         "phase3_3_gate": {
@@ -1019,6 +1024,7 @@ def boot_entry_status() -> dict:
             "candidate": "proxydhcp_metadata_only",
             "doc": "docs/PROXYDHCP_FEASIBILITY.md",
             "packet_review_doc": "docs/PROXYDHCP_PACKET_REVIEW.md",
+            "tftp_loader_scope_doc": "docs/TFTP_LOADER_SCOPE.md",
             "implementation_allowed": False,
             "service_enablement_allowed": False,
             "production_lan_testing_allowed": False,

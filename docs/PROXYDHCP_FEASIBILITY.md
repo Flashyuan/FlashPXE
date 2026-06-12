@@ -166,7 +166,7 @@ G6_PRODUCTION_PILOT_APPROVED
 这些交付物仍必须保持只读或离线，不得启用服务：
 
 - ProxyDHCP 报文字段白名单：见 `PROXYDHCP_PACKET_REVIEW.md`。
-- TFTP loader 文件白名单。
+- TFTP loader 文件白名单：见 `TFTP_LOADER_SCOPE.md`。
 - 隔离验证观测清单：见 `PROXYDHCP_PACKET_REVIEW.md`。
 - 抓包判读清单：见 `PROXYDHCP_PACKET_REVIEW.md`。
 - 回滚清单。
