@@ -1009,6 +1009,11 @@ def boot_entry_status() -> dict:
                 "path": "docs/TFTP_LOADER_SCOPE.md",
                 "purpose": "Documentation-only fixed loader allowlist for future isolated verification.",
             },
+            "phase3_rollback_checklist": {
+                "label": "Phase 3 rollback checklist",
+                "path": "docs/PHASE3_ROLLBACK_CHECKLIST.md",
+                "purpose": "Documentation-only rollback evidence checklist. No network change is approved.",
+            },
         },
         "local_verification_template": "docs/BOOT_ENTRY_LOCAL_VERIFICATION.md",
         "phase3_3_gate": {
@@ -1025,6 +1030,7 @@ def boot_entry_status() -> dict:
             "doc": "docs/PROXYDHCP_FEASIBILITY.md",
             "packet_review_doc": "docs/PROXYDHCP_PACKET_REVIEW.md",
             "tftp_loader_scope_doc": "docs/TFTP_LOADER_SCOPE.md",
+            "rollback_checklist_doc": "docs/PHASE3_ROLLBACK_CHECKLIST.md",
             "implementation_allowed": False,
             "service_enablement_allowed": False,
             "production_lan_testing_allowed": False,

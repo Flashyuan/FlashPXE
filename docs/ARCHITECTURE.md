@@ -99,6 +99,7 @@ GET /api/boot-entry
         +--> ProxyDHCP 可行性评估：PROXYDHCP_FEASIBILITY.md
         +--> ProxyDHCP 报文判读：PROXYDHCP_PACKET_REVIEW.md
         +--> TFTP loader 范围：TFTP_LOADER_SCOPE.md
+        +--> Phase 3 回滚清单：PHASE3_ROLLBACK_CHECKLIST.md
         +--> Phase 3.3 gate：router_option_path_not_recommended_but_blocked
 
 GET /api/boot-assets
@@ -134,6 +135,8 @@ Nginx `/boot/` 只允许精确访问：
 该文档只定义允许/禁止字段和判读结论。
 TFTP loader 文件范围见 `docs/TFTP_LOADER_SCOPE.md`，该文档只定义未来
 隔离验证的固定 loader 白名单，不包含 TFTP 服务配置。
+回滚判据见 `docs/PHASE3_ROLLBACK_CHECKLIST.md`，该文档只定义未来验证的
+恢复证据和阻塞条件，不包含网络设备操作步骤。
 
 Phase 3.3 继续保持 `BLOCKED`。任何 TFTP/ProxyDHCP 设计、实验或实现前，
 都必须重新通过 `research_agent`、`network_safety_agent`、

@@ -39,7 +39,7 @@ ProxyDHCP、TFTP 或任何 DHCP 服务。
 
 评估记录见 `PROXYDHCP_FEASIBILITY.md`；未来隔离验证的报文字段判读标准见
 `PROXYDHCP_PACKET_REVIEW.md`；TFTP loader 文件范围见
-`TFTP_LOADER_SCOPE.md`。
+`TFTP_LOADER_SCOPE.md`；回滚判据见 `PHASE3_ROLLBACK_CHECKLIST.md`。
 
 必须先确认以下事实：
 
@@ -147,6 +147,9 @@ sudo tcpdump -i <isolated-iface> -nn -vvv -s0 \
 - 保持默认网关仍为 `192.168.1.4`。
 - 关闭任何临时启用的 ProxyDHCP 或 TFTP。
 - 再次验证普通终端可获取 IP、访问内网和访问互联网。
+
+回滚证据清单见 `PHASE3_ROLLBACK_CHECKLIST.md`。该清单只定义证据与
+阻塞条件，不包含路由器、OpenWrt、Compose、TFTP 或 ProxyDHCP 操作步骤。
 
 ## 当前安全边界
 

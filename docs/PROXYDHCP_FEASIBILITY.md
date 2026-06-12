@@ -169,7 +169,7 @@ G6_PRODUCTION_PILOT_APPROVED
 - TFTP loader 文件白名单：见 `TFTP_LOADER_SCOPE.md`。
 - 隔离验证观测清单：见 `PROXYDHCP_PACKET_REVIEW.md`。
 - 抓包判读清单：见 `PROXYDHCP_PACKET_REVIEW.md`。
-- 回滚清单。
+- 回滚清单：见 `PHASE3_ROLLBACK_CHECKLIST.md`。
 - network_safety_agent / security_audit_agent 审查模板。
 
 ## 当前结论
