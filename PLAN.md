@@ -2355,6 +2355,15 @@ curl http://localhost:18080/api/boot-entry
      - `git_audit_agent` 审计 APPROVED for stage/commit preparation；免费版
        发布范围可整理提交，未发现商业源码、license 或混淆产物进入免费版
        push 范围；push 前仍需先完成本地提交并运行 push readiness。
+   - 本轮免费版发布记录：
+     - 本地提交：`f7eb891 Advance free SynaBoot boot integration gates`。
+     - `check-free-push-readiness.sh` 通过，工作区 `clean_for_push`，当前分支
+       `codex/synaboot-phase1`，upstream 为 `origin/codex/synaboot-phase1`。
+     - `project_decision_agent` 已 APPROVED 当前免费版提交推送方向。
+     - 已 push 到 GitHub 当前免费版分支：
+       `a2eed9b..f7eb891 codex/synaboot-phase1 -> codex/synaboot-phase1`。
+     - 商业版源码、license、混淆产物、真实 ISO、loader、SQLite、`.env`
+       均未进入 GitHub 免费版发布范围。
    - 单台测试机验证 UEFI PXE IPv4。
    - 验证普通终端 DHCP、网关、内网和互联网不受影响。
    - 当前状态：已创建只读文档草案；真实测试机验证等待 Phase 3.3 门禁解除。
