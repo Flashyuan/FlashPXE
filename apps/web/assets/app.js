@@ -516,6 +516,7 @@ function renderBootEntry() {
   const sourceSkeletonPackage = bootEntry.isolated_lab_source_skeleton_package || {};
   const manualDeclarationGate = bootEntry.isolated_lab_manual_declaration_gate || {};
   const runtimeAuthorizationPlan = bootEntry.isolated_lab_runtime_authorization_plan || {};
+  const runtimeAuthorizationDraft = bootEntry.isolated_lab_runtime_authorization_draft || {};
   const isolatedPlan = bootEntry.isolated_validation_plan || {};
   const docItems = [
     documentation.local_verification_template,
@@ -898,6 +899,53 @@ function renderBootEntry() {
     ["下一门禁", runtimeAuthorizationPlan.next_gate || []],
   ];
   document.querySelector("#boot-entry-runtime-authorization-plan").innerHTML = runtimePlanItems
+    .map(
+      ([label, items]) => `<article>
+        <h3>${escapeHtml(label)}</h3>
+        <p>${escapeHtml((items || []).filter(Boolean).join("；") || "无")}</p>
+      </article>`,
+    )
+    .join("");
+  const draftEvidenceRows = (runtimeAuthorizationDraft.required_evidence || [])
+    .map((item) => `${item.id}: ${item.status || "missing"} / stores=${item.stores_value ? "yes" : "no"}`);
+  const draftApprovalRows = (runtimeAuthorizationDraft.required_approvals || [])
+    .map((item) => `${item.role}: ${item.status || "missing"} / stores=${item.stores_value ? "yes" : "no"}`);
+  const draftBootRows = (runtimeAuthorizationDraft.boot_evidence_collection_plan || [])
+    .map((item) => {
+      const expected = item.expected || (item.expected_one_of || []).join(",");
+      return `${item.id}: expected=${expected} observed=${item.observed || "pending"} passed=${item.passed ? "yes" : "no"}`;
+    });
+  const draftServiceRows = Object.entries(runtimeAuthorizationDraft.network_service_state || {})
+    .map(([key, value]) => `${key}: ${value ? "yes" : "no"}`);
+  const draftItems = [
+    ["状态", [runtimeAuthorizationDraft.status || ""]],
+    ["阶段", [runtimeAuthorizationDraft.phase || ""]],
+    ["来源", [runtimeAuthorizationDraft.source || ""]],
+    ["只读", [runtimeAuthorizationDraft.read_only ? "是" : "否"]],
+    ["对象语义", [
+      `authorization_result=${runtimeAuthorizationDraft.is_authorization_result ? "yes" : "no"}`,
+      `state_transition=${runtimeAuthorizationDraft.is_state_transition_event ? "yes" : "no"}`,
+      `runtime_config_source=${runtimeAuthorizationDraft.is_runtime_config_source ? "yes" : "no"}`,
+    ]],
+    ["运行边界", [
+      `authorized=${runtimeAuthorizationDraft.authorized ? "yes" : "no"}`,
+      `runtime_start=${runtimeAuthorizationDraft.runtime_start_allowed ? "yes" : "no"}`,
+      `service_start=${runtimeAuthorizationDraft.service_start_allowed ? "yes" : "no"}`,
+      `config_generation=${runtimeAuthorizationDraft.config_generation_allowed ? "yes" : "no"}`,
+      `production_lan=${runtimeAuthorizationDraft.production_lan_allowed ? "yes" : "no"}`,
+      `boot_tested=${runtimeAuthorizationDraft.boot_tested ? "yes" : "no"}`,
+    ]],
+    ["服务状态", draftServiceRows],
+    ["必要证据", draftEvidenceRows],
+    ["必要审批", draftApprovalRows],
+    ["隔离范围要求", runtimeAuthorizationDraft.isolated_scope_requirements || []],
+    ["回滚方案要求", runtimeAuthorizationDraft.rollback_plan_requirements || []],
+    ["启动证据采集草案", draftBootRows],
+    ["非目标", runtimeAuthorizationDraft.explicit_non_goals || []],
+    ["转换要求", runtimeAuthorizationDraft.transition_requirements || []],
+    ["下一门禁", runtimeAuthorizationDraft.next_gate || []],
+  ];
+  document.querySelector("#boot-entry-runtime-authorization-draft").innerHTML = draftItems
     .map(
       ([label, items]) => `<article>
         <h3>${escapeHtml(label)}</h3>

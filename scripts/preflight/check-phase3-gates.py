@@ -91,6 +91,7 @@ def main() -> int:
     source_skeleton = boot_entry.get("isolated_lab_source_skeleton_package", {})
     manual_gate = boot_entry.get("isolated_lab_manual_declaration_gate", {})
     runtime_plan = boot_entry.get("isolated_lab_runtime_authorization_plan", {})
+    runtime_draft = boot_entry.get("isolated_lab_runtime_authorization_draft", {})
 
     require(boot_entry.get("phase") == "3.1", "boot-entry phase must remain 3.1")
     require(boot_entry.get("display_phase") == "3.4", "boot-entry display_phase must remain 3.4")
@@ -1143,6 +1144,120 @@ def main() -> int:
     runtime_values_text = "\n".join(collect_string_values(runtime_plan)).lower()
     for token in forbidden_runtime_value_tokens:
         require(token not in runtime_values_text, f"isolated_lab_runtime_authorization_plan contains forbidden value token: {token}")
+
+    require(
+        runtime_draft.get("schema_version") == "phase3-isolated-lab-runtime-authorization-draft.v1",
+        "isolated_lab_runtime_authorization_draft schema mismatch",
+    )
+    require(runtime_draft.get("phase") == "3.16", "isolated_lab_runtime_authorization_draft phase mismatch")
+    require(
+        runtime_draft.get("draft_id") == "isolated_lab_runtime_authorization_draft",
+        "isolated_lab_runtime_authorization_draft id mismatch",
+    )
+    require(
+        runtime_draft.get("status") == "draft_blocked_until_evidence_and_approvals",
+        "isolated_lab_runtime_authorization_draft status mismatch",
+    )
+    require(runtime_draft.get("read_only") is True, "isolated_lab_runtime_authorization_draft.read_only must be true")
+    require(
+        runtime_draft.get("source") == "static_read_only_authorization_draft",
+        "isolated_lab_runtime_authorization_draft source mismatch",
+    )
+    require(runtime_draft.get("depends_on_manual_gate_phase") == "3.14", "isolated_lab_runtime_authorization_draft manual dependency mismatch")
+    require(runtime_draft.get("depends_on_plan_phase") == "3.15", "isolated_lab_runtime_authorization_draft plan dependency mismatch")
+    for key in (
+        "is_authorization_result",
+        "is_state_transition_event",
+        "is_runtime_config_source",
+        "request_is_authorization",
+        "authorized",
+        "authorization_granted",
+        "manual_facts_cleared",
+        "runtime_enabled",
+        "runtime_start_allowed",
+        "service_start_allowed",
+        "service_started",
+        "config_generation_allowed",
+        "config_files_generated",
+        "write_api_available",
+        "write_api_allowed",
+        "database_write_allowed",
+        "task_consumption_allowed",
+        "production_lan_allowed",
+        "production_lan_boot_allowed",
+        "production_lan_testing_allowed",
+        "boot_tested",
+        "observations_recorded",
+        "packet_capture_allowed",
+        "packet_capture_started",
+        "network_probe_allowed",
+        "network_probe_started",
+        "command_execution_allowed",
+        "host_network",
+        "host_network_allowed",
+        "privileged",
+        "privileged_container_allowed",
+        "tp_link_modified",
+        "openwrt_modified",
+        "routing_modified",
+        "gateway_modified",
+        "firewall_modified",
+        "dns_modified",
+        "normal_dhcp_leases_enabled",
+    ):
+        require_false(runtime_draft, key, "boot-entry.isolated_lab_runtime_authorization_draft")
+    draft_service_state = runtime_draft.get("network_service_state", {})
+    for key in (
+        "d" + "hcp_server_enabled",
+        "proxy" + "d" + "hcp_enabled",
+        "tf" + "tp_enabled",
+        "udp_67_open",
+        "udp_69_open",
+        "udp_4011_open",
+        "udp_67_listening",
+        "udp_69_listening",
+        "udp_4011_listening",
+        "udp_67_mapped",
+        "udp_69_mapped",
+        "udp_4011_mapped",
+    ):
+        require_false(draft_service_state, key, "boot-entry.isolated_lab_runtime_authorization_draft.network_service_state")
+    for key in (
+        "required_evidence",
+        "required_approvals",
+        "isolated_scope_requirements",
+        "rollback_plan_requirements",
+        "boot_evidence_collection_plan",
+        "explicit_non_goals",
+        "transition_requirements",
+        "next_gate",
+    ):
+        require(
+            isinstance(runtime_draft.get(key), list) and bool(runtime_draft[key]),
+            f"isolated_lab_runtime_authorization_draft.{key} must be a non-empty list",
+        )
+    for item in runtime_draft.get("required_evidence", []):
+        require(item.get("status") == "missing", f"isolated_lab_runtime_authorization_draft evidence {item.get('id')} must remain missing")
+        require(item.get("stores_value") is False, f"isolated_lab_runtime_authorization_draft evidence {item.get('id')} must not store values")
+    draft_approval_text = " ".join(item.get("role", "") + " " + item.get("status", "") for item in runtime_draft.get("required_approvals", []))
+    for token in ("network_safety_agent", "security_audit_agent", "project_decision_agent", "user_manual_confirmation"):
+        require(token in draft_approval_text, f"isolated_lab_runtime_authorization_draft missing approval {token}")
+    for item in runtime_draft.get("boot_evidence_collection_plan", []):
+        require(item.get("observed") == "", f"isolated_lab_runtime_authorization_draft boot evidence {item.get('id')} must not include observations")
+        require(item.get("passed") is False, f"isolated_lab_runtime_authorization_draft boot evidence {item.get('id')} must remain unpassed")
+    draft_text = " ".join(
+        runtime_draft.get("explicit_non_goals", [])
+        + runtime_draft.get("transition_requirements", [])
+        + runtime_draft.get("next_gate", [])
+    )
+    for token in ("runtime authorization", "state transition", "runtime configuration source", "production LAN"):
+        require(token in draft_text, f"isolated_lab_runtime_authorization_draft must preserve blocked wording for {token}")
+    runtime_draft_values_text = "\n".join(collect_string_values(runtime_draft)).lower()
+    for token in forbidden_runtime_value_tokens:
+        require(
+            token not in runtime_draft_values_text,
+            f"isolated_lab_runtime_authorization_draft contains forbidden value token: {token}",
+        )
 
     require(isolated_plan.get("phase") == "3.5", "isolated_validation_plan phase mismatch")
     require(isolated_plan.get("mode") == "readonly_plan_only", "isolated_validation_plan mode mismatch")

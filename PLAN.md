@@ -2413,6 +2413,50 @@ curl http://localhost:18080/api/boot-entry
        `25088b1..c8043c4 codex/synaboot-phase1 -> codex/synaboot-phase1`。
      - 商业版源码、license、混淆产物、真实 ISO、loader、SQLite、`.env`
        均未进入 GitHub 免费版发布范围。
+   - 本轮 Phase 3.16 运行态证据：
+     - `/api/boot-entry` 返回
+       `schema=phase3-isolated-lab-runtime-authorization-draft.v1`、
+       `phase=3.16`、
+       `status=draft_blocked_until_evidence_and_approvals`、
+       `read_only=true`。
+     - 该对象是 future runtime authorization object 的只读草案，不是授权
+       结果、不是状态迁移事件、不是运行时配置源、不是服务启动入口。
+     - `is_authorization_result`、`is_state_transition_event`、
+       `is_runtime_config_source`、`authorized`、`runtime_enabled`、
+       `runtime_start_allowed`、`service_start_allowed`、
+       `config_generation_allowed`、`write_api_available`、
+       `production_lan_allowed`、`boot_tested`、`host_network`、`privileged`、
+       `tp_link_modified`、`openwrt_modified`、
+       `normal_dhcp_leases_enabled` 均为 false。
+     - `required_evidence=5`、`required_approvals=4`、
+       `boot_evidence_collection_plan=5`；所有 boot evidence 均无 observed
+       值且 `passed=false`。
+     - UDP `67/69/4011` 在该 draft 的 `network_service_state` 中全部为
+       false；`ss -lntu` 未显示这些端口监听。
+   - 本轮 Phase 3.16 验证记录：
+     - `PYTHONDONTWRITEBYTECODE=1 python3 scripts/preflight/check-phase3-gates.py`
+     - `node --check apps/web/assets/app.js`
+     - `git diff --check`
+     - `find apps scripts -path '*/__pycache__*' -print`
+     - `bash scripts/preflight/check-network-safety.sh`
+     - `bash scripts/preflight/check-subagent-governance.sh`
+     - `bash scripts/preflight/check-compose-config-safe.sh`
+     - `bash scripts/preflight/collect-release-evidence.sh`
+     - `docker compose up -d --build`
+     - HTTP `/`、`/boot/menu.ipxe` 和 `/api/boot-entry` 运行态 smoke 均通过。
+   - 本轮 Phase 3.16 收口审查：
+     - `project_decision_agent`、`network_safety_agent`、
+       `security_audit_agent`、`boot_entry_agent`、`architecture_agent`
+       预审均 APPROVED，批准范围仅限只读 runtime authorization draft。
+     - 实现后 `network_safety_agent` 收口 APPROVED，确认未启用 DHCP、
+       ProxyDHCP、TFTP，未开放 UDP `67/69/4011`，未触碰 TP-Link、
+       OpenWrt、路由、网关、防火墙或 DNS。
+     - 实现后 `security_audit_agent` 收口 APPROVED，确认无写 API、无配置
+       生成、无服务启动、无 secret/token/raw command、无真实 MAC/IP/
+       customer/hostname，免费版/商业版边界未破坏。
+     - `git_audit_agent` 审计 APPROVED for free-edition stage/commit
+       preparation；未发现商业代码、license、混淆产物、真实 ISO、loader、
+       SQLite、`.env`、secret 或 runtime ignored data 进入免费版提交范围。
    - 单台测试机验证 UEFI PXE IPv4。
    - 验证普通终端 DHCP、网关、内网和互联网不受影响。
    - 当前状态：已创建只读文档草案；真实测试机验证等待 Phase 3.3 门禁解除。
@@ -2530,6 +2574,9 @@ branch: codex/synaboot-phase1
   agent id、状态、操作流水、可引用结论、完成进度和 stale/重建原因；
   不记录 token、商业源码、私有配置或镜像内容。上下文压缩或线程恢复后，
   主控必须先读取该台账，再声明 subagent 状态或引用其旧结论。
+- `docs/SUBAGENT_SESSION_POOL.md` 中的“协作统计与压缩恢复快照”是恢复
+  subagent 状态的主表，不是普通备注。每一行必须能回答岗位是谁、做过什么、
+  当前进度、下次如何复用；否则压缩恢复后不得引用该 agent 的旧回复。
 - `docs/SUBAGENT_SESSION_POOL.md` 必须保留协作统计与压缩恢复快照，至少记录
   `role`、`agent_id`、`status`、`operation_log`、`latest_topic`、
   `progress`、`reusable_conclusion` 和 `next_reuse_rule`。未登记在台账中的

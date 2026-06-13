@@ -56,6 +56,8 @@ required_plan_markers=(
   "优先 \`send_input\` 回传给已有会话"
   "禁止在已有固定会话池可用时，为同一职责另开新窗口"
   "长期协作台账见 \`docs/SUBAGENT_SESSION_POOL.md\`"
+  "协作统计与压缩恢复快照”是恢复"
+  "岗位是谁、做过什么"
   "\`operation_log\`"
   "\`reusable_conclusion\`"
   "\`next_reuse_rule\`"
@@ -77,6 +79,13 @@ done
 
 required_pool_markers=(
   "## 0. 长期记忆字段要求"
+  "### 0.0 协作统计表契约"
+  "恢复 subagent 状态的主表"
+  "每一行必须能回答 4 个问题"
+  "它做过什么"
+  "它现在推进到哪里"
+  "下次怎么复用"
+  "统计表更新规则"
   "## 3. 角色岗位总表"
   "## 4. 当前会话登记表"
   "## 5. 操作流水表"

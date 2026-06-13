@@ -11,6 +11,30 @@
 本文档是 subagent 协作的长期记忆源。上下文压缩、线程恢复、工具 registry
 重置或主控切换后，不能只依赖聊天摘要判断 subagent 曾经说过什么。
 
+### 0.0 协作统计表契约
+
+“协作统计与压缩恢复快照”是恢复 subagent 状态的主表，必须长期保留并持续
+更新。该表不是普通说明文字，而是上下文压缩后的恢复契约。
+
+每一行必须能回答 4 个问题：
+
+- 这个岗位是谁：`role`、`agent_id`、`status`。
+- 它做过什么：`operation_log` 对应的流水记录数和最近主题。
+- 它现在推进到哪里：`progress` 和仍然存在的阻断点。
+- 下次怎么复用：`reusable_conclusion` 和 `next_reuse_rule`。
+
+如果某个 subagent 回复没有进入“操作流水表”和“协作统计与压缩恢复快照”，
+压缩恢复后不得把它当作已批准、已完成、已阻断或已复用的事实。
+
+统计表更新规则：
+
+- 每次 `send_input`、`wait`、超时、空输出、`agent not found`、重建、关闭、
+  审计批准或审计阻断后，都必须更新对应行。
+- “流水记录数”必须与当前 active `agent_id` 的有效登记记录相匹配。
+- `progress` 必须写清楚当前阶段结论，不能只写 `READY`、`OK` 或 `DONE`。
+- `reusable_conclusion` 只能引用“结论与进度表”中有证据的内容。
+- `next_reuse_rule` 必须说明下次触发条件，用来防止遇到小问题就新开会话。
+
 每个 active subagent 至少必须长期记录以下字段：
 
 - `role`：固定岗位名，必须对应 `.codex/agents/*.toml` 中的 11 个角色之一。
@@ -292,6 +316,10 @@ git_audit_agent               019ec02f-bd09-7520-88db-b57c0d35c296  active  READ
 | 2026-06-13 | runtime | local | command | Phase 3.15 免费版整理提交 | 创建本地提交 `c8043c4 Add isolated lab runtime authorization plan` | ready | 6 files changed；真实 ISO/loader/SQLite/.env 仍 ignored |
 | 2026-06-13 | project_decision_agent | 019ec02f-ac76-7863-899a-3af5498ce444 | send_input/wait | Phase 3.15 免费版提交 push 前方向确认 | APPROVED，允许将当前免费版提交推送到当前 GitHub 分支 | active | `check-free-push-readiness.sh` PASS；working_tree=clean_for_push；商业实现 absent |
 | 2026-06-13 | runtime | local | command | Phase 3.15 免费版 GitHub push | 成功 push `25088b1..c8043c4 codex/synaboot-phase1 -> codex/synaboot-phase1` | ready | 商业代码未进入免费版发布范围 |
+| 2026-06-13 | runtime | local | command | Phase 3.16 实现和运行态验证 | 新增 `isolated_lab_runtime_authorization_draft` API/UI/预检；HTTP `/`、`/boot/menu.ipxe`、`/api/boot-entry` smoke 均通过 | ready | draft `phase=3.16`、`read_only=true`、`status=draft_blocked_until_evidence_and_approvals`；runtime/network/service/production LAN 字段均 false；UDP 67/69/4011 无监听 |
+| 2026-06-13 | network_safety_agent | 019ec02f-ad02-7ae0-8c00-c7baeb46709e | send_input/wait | Phase 3.16 实现后网络安全收口 | APPROVED | active | 未启 DHCP/ProxyDHCP/TFTP；未开放 UDP 67/69/4011；未修改 TP-Link/OpenWrt/路由/网关/防火墙/DNS；草案不是生产 LAN 授权 |
+| 2026-06-13 | security_audit_agent | 019ec02f-baba-7832-bc4a-ed9d8d696048 | send_input/wait | Phase 3.16 实现后安全收口 | APPROVED | active | 无写 API、无配置生成、无服务启动、无 secret/token/raw command、无真实 MAC/IP/customer/hostname；免费版/商业版边界未破坏 |
+| 2026-06-13 | git_audit_agent | 019ec02f-bd09-7520-88db-b57c0d35c296 | send_input/wait | Phase 3.16 Git/发布范围审计 | APPROVED for free-edition stage/commit preparation | active | `collect-release-evidence.sh` PASS；tracked_changed_count=7；未发现商业代码、license、混淆产物、真实 ISO/loader/SQLite/.env/secret/runtime ignored data 进入免费版 commit 范围 |
 
 ## 6. 协作统计与压缩恢复快照
 
@@ -303,15 +331,15 @@ git_audit_agent               019ec02f-bd09-7520-88db-b57c0d35c296  active  READ
 | --- | --- | --- | --- | --- | --- | --- |
 | research_agent | 019ec02f-abcd-70b2-9364-cdb120d3d2a4 | active | 2 | Phase 3.15 runtime authorization plan 研究预审 | APPROVED，只读授权前计划不需要新增外部研究；真实 runtime 前仍需研究 TL-ER6120T、UEFI、ProxyDHCP、隔离证据和成功/失败判据 | 仅在 TL-ER6120T、iPXE/UEFI、协议或外部资料不确定时复用 |
 | project_decision_agent | 019ec02f-ac76-7863-899a-3af5498ce444 | active | 4 | Phase 3.15 免费版提交 push 前方向确认 | APPROVED，允许将当前免费版提交推送到当前 GitHub 分支；商业代码仍不得进入 GitHub 免费版 push | 仅在阶段、收费边界、发布方向、商业边界或重大取舍时复用 |
-| network_safety_agent | 019ec02f-ad02-7ae0-8c00-c7baeb46709e | active | 4 | Phase 3.15 实现后网络安全收口 | APPROVED，无阻断项；runtime authorization plan 未启 DHCP/ProxyDHCP/TFTP、未开放 UDP、未触碰 TP-Link/OpenWrt/路由/网关/防火墙/DNS | 触及 Compose 网络、端口、DHCP、ProxyDHCP、TFTP、路由或网关时必须复用 |
+| network_safety_agent | 019ec02f-ad02-7ae0-8c00-c7baeb46709e | active | 5 | Phase 3.16 实现后网络安全收口 | APPROVED，无阻断项；runtime authorization draft 未启 DHCP/ProxyDHCP/TFTP、未开放 UDP 67/69/4011、未触碰 TP-Link/OpenWrt/路由/网关/防火墙/DNS，不是生产 LAN 授权 | 触及 Compose 网络、端口、DHCP、ProxyDHCP、TFTP、路由或网关时必须复用 |
 | architecture_agent | 019ec02f-adf7-7162-8721-3b127ac3e51f | active | 2 | Phase 3.15 runtime authorization plan 架构预审 | APPROVED for architecture shape；只读预审对象，不是授权对象、运行时配置源或服务入口 | 改 API、数据模型、阶段边界或受控 PXE 集成结构时复用 |
 | boot_entry_agent | 019ec02f-aedd-78d0-b7ac-efb3f69b6791 | active | 2 | Phase 3.15 runtime authorization plan 启动链路预审 | APPROVED，只允许描述未来 boot path evidence 要求；不得写 observed、passed=true 或 boot_tested=true | 改 menu.ipxe、boot assets、loader、PXE/HTTP Boot 链路时复用 |
 | storage_agent | 019ec02f-b120-7a92-9823-4e9f386c70ba | active | 1 | 固定会话池重建 | READY，负责 data/images、metadata、静态 HTTP 暴露和生成物边界；避免污染用户 ISO | 改镜像扫描、元数据、静态路径、ISO 派生文件边界时复用 |
 | image_factory_agent | 019ec02f-b31a-7cb0-a544-314d1092e227 | active | 1 | 固定会话池重建 | READY，负责 ISO 准备、Ubuntu autoinstall、Windows 外部 ADK/DISM 任务模板和非破坏性镜像工厂 | 改 ISO 准备、autoinstall、任务包或镜像制作流程时复用 |
 | webui_agent | 019ec02f-b56a-7f83-aa03-0c45c88e8e4b | active | 1 | 固定会话池重建 | READY，负责 Web UI、管理员体验、镜像管理、启动入口展示、只读/禁用态和未授权启动入口审查 | 改管理员 UI、镜像管理体验、状态展示时复用 |
 | tutorial_docs_agent | 019ec02f-b887-7c11-bb50-825e065706cb | active | 1 | 固定会话池重建 | READY，负责 README、管理员教程、架构说明、安全边界、回滚、验收和未授权能力文档口径 | 改教程、交接说明、验收记录时复用 |
-| security_audit_agent | 019ec02f-baba-7832-bc4a-ed9d8d696048 | active | 4 | Phase 3.15 实现后安全收口 | APPROVED，无阻断项；只读 static pre-review plan，无写 API、无配置生成、无服务启动、无 secret/raw command | 改路径、权限、脚本执行、Docker、安全边界或商业边界时复用 |
-| git_audit_agent | 019ec02f-bd09-7520-88db-b57c0d35c296 | active | 3 | Phase 3.15 Git/发布范围审计 | APPROVED for free-edition stage/commit preparation；未发现商业代码、license、混淆产物或真实镜像误入 push 范围 | milestone 收口、stage/commit/push 前必须复用 |
+| security_audit_agent | 019ec02f-baba-7832-bc4a-ed9d8d696048 | active | 5 | Phase 3.16 实现后安全收口 | APPROVED，无阻断项；只读 runtime authorization draft，无写 API、无配置生成、无服务启动、无 secret/token/raw command、无真实身份或环境值 | 改路径、权限、脚本执行、Docker、安全边界或商业边界时复用 |
+| git_audit_agent | 019ec02f-bd09-7520-88db-b57c0d35c296 | active | 4 | Phase 3.16 Git/发布范围审计 | APPROVED for free-edition stage/commit preparation；未发现商业代码、license、混淆产物或真实 ISO/loader/SQLite/.env/secret/runtime ignored data 进入免费版提交范围 | milestone 收口、stage/commit/push 前必须复用 |
 
 统计规则：
 
@@ -345,6 +373,7 @@ git_audit_agent               019ec02f-bd09-7520-88db-b57c0d35c296  active  READ
 | Phase 3.13 isolated lab source skeleton package | research_agent、project_decision_agent、architecture_agent、boot_entry_agent、network_safety_agent、security_audit_agent、git_audit_agent | 已实现 `isolated_lab_source_skeleton_package` API/UI/预检只读源码骨架与离线 fixture 模型；它只表达未来单机隔离实验的协议模型、boot metadata 模型、loader transfer scope、HTTP chain target、client evidence fixture 和授权门禁；`status=not_runnable`、`fixture_only=true`、`offline_package_only=true`，runtime entry arrays 均为空，所有运行、配置、服务、Compose、生产 LAN、发包、抓包、探测字段为 false | 6 个固定岗位预审 APPROVED；network_safety/security/git 收口 APPROVED；`check-subagent-governance.sh` PASS；`check-phase3-gates.py` PASS；`check-network-safety.sh` PASS；`collect-release-evidence.sh` PASS；`git diff --check` PASS；`node --check apps/web/assets/app.js` PASS；HTTP `/`、`/boot/menu.ipxe`、`/boot/loaders/snponly.efi`、`/boot/loaders/ipxe.efi` 均 200；API `status=not_runnable`、empty runtime arrays、`ports=67:False:False,69:False:False,4011:False:False`；fixture `config/synaboot/phase3.13-isolated-lab-source-skeleton.disabled.json` 不可执行、无 shebang、`loaded_at_runtime=false`；UDP 67/69/4011 无监听；`python_bytecode_cache=absent` | 真实 UEFI PXE IPv4 自动启动仍未完成；source skeleton 不是可运行服务、配置生成器、Compose 模块或生产 LAN 授权；下一阶段若进入 runtime 设计、真实 isolated lab 客户端交互、抓包、服务启动、端口开放或生产 LAN 接入，必须重新触发 research/network_safety/security/project_decision 并取得用户手动确认 |
 | Phase 3.14 isolated lab manual declaration gate | network_safety_agent、security_audit_agent、git_audit_agent、project_decision_agent | 已实现 `isolated_lab_manual_declaration_gate` API/UI/预检只读手工声明门禁；它只表达进入真实 isolated lab runtime 前必须人工确认的事实模板；`status=missing_facts`、`submission_status=not_submitted`、`authorization_status=not_authorized`、`read_only=true`、`template_only=true`，不收集、不保存真实客户端或实验环境值，不新增写 API，不解锁 runtime | network_safety/security 收口 APPROVED；git_audit_agent APPROVED for stage/commit preparation；project_decision_agent APPROVED push；`check-free-push-readiness.sh` PASS；本地提交 `f7eb891` 已 push 到 GitHub 免费版分支；`check-phase3-gates.py`、`check-network-safety.sh`、`check-subagent-governance.sh`、`check-compose-config-safe.sh`、`collect-release-evidence.sh`、`node --check`、HTTP/API smoke 均 PASS；UDP 67/69/4011 无监听；`python_bytecode_cache=absent` | 真实 UEFI PXE IPv4 自动启动仍未完成；manual declaration gate 不是用户提交、实验授权、配置生成器、服务启动入口或生产 LAN 授权；下一阶段仍需 isolated lab runtime 设计与人工实验确认 |
 | Phase 3.15 isolated lab runtime authorization plan | research_agent、project_decision_agent、architecture_agent、boot_entry_agent、network_safety_agent、security_audit_agent、git_audit_agent | 已实现 `isolated_lab_runtime_authorization_plan` API/UI/预检只读 runtime 授权前计划；它只表达未来进入 isolated lab runtime 前必须满足的审批、范围、证据、回滚和研究缺口；`status=blocked_until_manual_facts_and_approvals`、`read_only=true`，runtime/service/config/write/production LAN/boot tested 均为 false | 6 个固定岗位预审 APPROVED；network_safety/security/git 收口 APPROVED；project_decision_agent APPROVED push；`check-free-push-readiness.sh` PASS；本地提交 `c8043c4` 已 push 到 GitHub 免费版分支；`check-phase3-gates.py`、`check-network-safety.sh`、`check-subagent-governance.sh`、`check-compose-config-safe.sh`、`collect-release-evidence.sh`、`node --check`、HTTP/API smoke 均 PASS；API `missing=9`、`approvals=5`、`evidence=5`；UDP 67/69/4011 无监听；`python_bytecode_cache=absent` | 真实 UEFI PXE IPv4 自动启动仍未完成；runtime authorization plan 不是授权结果、配置源、服务启动入口或生产 LAN 许可；下一阶段若进入真实授权对象或服务实现，必须重新触发 research/network_safety/security/project_decision 并取得用户手动确认 |
+| Phase 3.16 isolated lab runtime authorization draft | project_decision_agent、architecture_agent、boot_entry_agent、network_safety_agent、security_audit_agent、git_audit_agent | 已实现 `isolated_lab_runtime_authorization_draft` API/UI/预检只读授权草案；它只描述未来授权对象结构，不是授权结果、状态迁移、运行时配置源、服务启动入口或生产 LAN 许可；`status=draft_blocked_until_evidence_and_approvals`、`read_only=true`，runtime/service/config/write/production LAN/boot tested 均为 false | project_decision/network_safety/security/boot_entry/architecture 预审 APPROVED；network_safety/security/git 收口 APPROVED；`check-phase3-gates.py`、`check-network-safety.sh`、`check-subagent-governance.sh`、`check-compose-config-safe.sh`、`collect-release-evidence.sh`、`node --check`、`git diff --check`、HTTP/API smoke 均 PASS；API `required_evidence=5`、`required_approvals=4`、`boot_evidence_count=5`；UDP 67/69/4011 无监听；`python_bytecode_cache=absent` | 真实 UEFI PXE IPv4 自动启动仍未完成；draft 不是真实授权对象、不是服务实现、不是配置生成器；下一阶段若进入真实授权对象、服务实现、端口开放、抓包、探测或生产 LAN 接入，必须重新触发 research/network_safety/security/project_decision 并取得用户手动确认 |
 
 ## 8. 上下文压缩交接规则
 
