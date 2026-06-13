@@ -3157,9 +3157,182 @@ def isolated_lab_manual_declaration_gate() -> dict:
     }
 
 
+def isolated_lab_runtime_authorization_plan(manual_gate: dict) -> dict:
+    missing_facts = list(manual_gate.get("missing_facts", []))
+    return {
+        "schema_version": "phase3-isolated-lab-runtime-authorization-plan.v1",
+        "phase": "3.15",
+        "plan_id": "isolated_lab_runtime_authorization_plan",
+        "status": "blocked_until_manual_facts_and_approvals",
+        "read_only": True,
+        "source": "static_pre_review_plan",
+        "depends_on_manual_gate_phase": manual_gate.get("phase", "3.14"),
+        "request_is_authorization": False,
+        "authorization_granted": False,
+        "runtime_enabled": False,
+        "runtime_start_allowed": False,
+        "service_start_allowed": False,
+        "service_started": False,
+        "config_generation_allowed": False,
+        "config_files_generated": False,
+        "write_api_available": False,
+        "write_api_allowed": False,
+        "database_write_allowed": False,
+        "task_consumption_allowed": False,
+        "production_lan_allowed": False,
+        "production_lan_testing_allowed": False,
+        "boot_tested": False,
+        "observations_recorded": False,
+        "packet_capture_allowed": False,
+        "packet_capture_started": False,
+        "network_probe_allowed": False,
+        "network_probe_started": False,
+        "active_probe_allowed": False,
+        "command_execution_allowed": False,
+        "host_network_allowed": False,
+        "privileged_container_allowed": False,
+        "router_change_allowed": False,
+        "gateway_change_allowed": False,
+        "routing_change_allowed": False,
+        "firewall_change_allowed": False,
+        "dns_change_allowed": False,
+        "normal_dhcp_leases_enabled": False,
+        "network_service_state": {
+            "dhcp_server_enabled": False,
+            "proxydhcp_enabled": False,
+            "tftp_enabled": False,
+            "udp_67_open": False,
+            "udp_69_open": False,
+            "udp_4011_open": False,
+            "udp_67_listening": False,
+            "udp_69_listening": False,
+            "udp_4011_listening": False,
+            "udp_67_mapped": False,
+            "udp_69_mapped": False,
+            "udp_4011_mapped": False,
+        },
+        "missing_manual_facts": missing_facts,
+        "manual_gate_status": manual_gate.get("status", ""),
+        "manual_gate_ready": False,
+        "required_approvals": [
+            {
+                "role": "research_agent",
+                "status": "required_before_runtime",
+                "stores_value": False,
+            },
+            {
+                "role": "network_safety_agent",
+                "status": "required_before_runtime",
+                "stores_value": False,
+            },
+            {
+                "role": "security_audit_agent",
+                "status": "required_before_runtime",
+                "stores_value": False,
+            },
+            {
+                "role": "project_decision_agent",
+                "status": "required_before_runtime",
+                "stores_value": False,
+            },
+            {
+                "role": "user_manual_confirmation",
+                "status": "required_before_runtime",
+                "stores_value": False,
+            },
+        ],
+        "runtime_scope_candidates": [
+            {
+                "id": "single_client_isolated_lab",
+                "status": "candidate_only",
+                "allowed_to_execute": False,
+                "requires_manual_fact_clearance": True,
+            },
+            {
+                "id": "loader_transfer_for_reviewed_files_only",
+                "status": "candidate_only",
+                "allowed_to_execute": False,
+                "requires_manual_fact_clearance": True,
+            },
+            {
+                "id": "boot_metadata_without_ordinary_leases",
+                "status": "candidate_only",
+                "allowed_to_execute": False,
+                "requires_manual_fact_clearance": True,
+            },
+        ],
+        "explicit_non_goals": [
+            "Do not use this plan as runtime authorization.",
+            "Do not create ordinary client leases from SynaBoot.",
+            "Do not change production routing, gateway, firewall, or name resolution.",
+            "Do not generate router, service, or container override settings.",
+            "Do not start boot services from this plan.",
+            "Do not record real client or environment values in this plan.",
+        ],
+        "transition_requirements": [
+            "All manual declaration facts must be cleared by a separate approved design.",
+            "Research, network safety, security, and project decision approvals must be fresh for runtime.",
+            "The isolated lab scope must remain separate from production clients.",
+            "Rollback conditions must be reviewed before any client interaction.",
+            "Boot evidence collection design must be reviewed before any packet interaction.",
+        ],
+        "rollback_conditions": [
+            "Any non-test endpoint appears in the experiment path.",
+            "Any ordinary lease assignment by SynaBoot is detected.",
+            "Any production network change is requested.",
+            "Any boot service is requested outside an approved isolated lab.",
+            "The loader does not reach the HTTP menu target.",
+        ],
+        "boot_evidence_requirements": [
+            {
+                "id": "firmware_entry_selected",
+                "expected": "UEFI PXE IPv4",
+                "observed": "",
+                "passed": False,
+            },
+            {
+                "id": "reviewed_loader_requested",
+                "expected_one_of": ["snponly.efi", "ipxe.efi"],
+                "observed": "",
+                "passed": False,
+            },
+            {
+                "id": "http_menu_reached",
+                "expected": "menu.ipxe reached by the reviewed loader",
+                "observed": "",
+                "passed": False,
+            },
+            {
+                "id": "ready_image_menu_visible",
+                "expected": "ready image entries visible in SynaBoot menu",
+                "observed": "",
+                "passed": False,
+            },
+            {
+                "id": "no_ordinary_lease_from_synaboot",
+                "expected": "SynaBoot does not assign ordinary client leases",
+                "observed": "",
+                "passed": False,
+            },
+        ],
+        "future_research_items": [
+            "Confirm production router boot metadata capability without changing ordinary leases.",
+            "Confirm firmware behavior across representative UEFI PXE IPv4 clients.",
+            "Confirm isolated lab response ordering and failure modes before runtime.",
+            "Confirm rollback proof required before any production evaluation.",
+        ],
+        "next_gate": [
+            "Keep this plan readonly and blocked.",
+            "Design a separate authorization object only after manual facts are cleared.",
+            "Request fresh reviewer approvals before any service or packet interaction.",
+        ],
+    }
+
+
 def boot_entry_status() -> dict:
     menu_url = f"http://{SERVER_IP}:{SYNABOOT_PORT}/boot/menu.ipxe"
     loaders = boot_assets_status()["loaders"]
+    manual_gate = isolated_lab_manual_declaration_gate()
     return {
         "schema_version": "boot-entry.v1",
         "phase": "3.1",
@@ -3216,7 +3389,8 @@ def boot_entry_status() -> dict:
         "isolated_lab_evidence_package": isolated_lab_evidence_package(loaders),
         "isolated_lab_config_intent_package": isolated_lab_config_intent_package(loaders),
         "isolated_lab_source_skeleton_package": isolated_lab_source_skeleton_package(loaders),
-        "isolated_lab_manual_declaration_gate": isolated_lab_manual_declaration_gate(),
+        "isolated_lab_manual_declaration_gate": manual_gate,
+        "isolated_lab_runtime_authorization_plan": isolated_lab_runtime_authorization_plan(manual_gate),
         "isolated_validation_plan": {
             "phase": "3.5",
             "mode": "readonly_plan_only",

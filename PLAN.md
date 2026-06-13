@@ -2260,6 +2260,11 @@ curl http://localhost:18080/api/boot-entry
        它 `status=missing_facts`、`submission_status=not_submitted`、
        `authorization_status=not_authorized`，不收集、不保存、不回传真实
        客户端或实验环境值，不新增写 API，不解锁 runtime。
+     - `isolated_lab_runtime_authorization_plan` 作为 Phase 3.15 只读 runtime
+       授权前计划，仅表达未来进入 isolated lab runtime 前必须满足的审批、
+       范围、证据、回滚和研究缺口；它
+       `status=blocked_until_manual_facts_and_approvals`，不等于授权结果、
+       配置源、服务启动入口或生产 LAN 许可。
    - 本轮 Phase 3.12 运行态证据：
      - `/api/boot-entry` 返回
        `schema=phase3-isolated-lab-config-intent-package.v1`、
@@ -2364,6 +2369,42 @@ curl http://localhost:18080/api/boot-entry
        `a2eed9b..f7eb891 codex/synaboot-phase1 -> codex/synaboot-phase1`。
      - 商业版源码、license、混淆产物、真实 ISO、loader、SQLite、`.env`
        均未进入 GitHub 免费版发布范围。
+   - 本轮 Phase 3.15 运行态证据：
+     - `/api/boot-entry` 返回
+       `schema=phase3-isolated-lab-runtime-authorization-plan.v1`、
+       `phase=3.15`、`status=blocked_until_manual_facts_and_approvals`、
+       `read_only=true`。
+     - `missing_manual_facts=9`，继承 Phase 3.14 手工声明门禁的缺失事实；
+       `required_approvals=5`，覆盖 research、network safety、security、
+       project decision 和用户手工确认。
+     - `runtime_enabled`、`runtime_start_allowed`、`service_start_allowed`、
+       `config_generation_allowed`、`write_api_available`、
+       `production_lan_allowed`、`production_lan_testing_allowed`、`boot_tested`
+       均为 false。
+     - `boot_evidence_requirements=5`，覆盖 UEFI PXE IPv4 固件入口、reviewed
+       loader 请求、HTTP menu、ready image menu 和 SynaBoot 不分配普通租约；
+       所有 evidence 项均无 `observed` 值且 `passed=false`。
+     - UDP `67/69/4011` 在该 plan 的 `network_service_state` 中全部为
+       open/listening/mapped false；`ss -lntu` 未显示这些端口监听。
+   - 本轮 Phase 3.15 验证记录：
+     - `PYTHONDONTWRITEBYTECODE=1 python3 scripts/preflight/check-phase3-gates.py`
+     - `node --check apps/web/assets/app.js`
+     - `bash scripts/preflight/check-network-safety.sh`
+     - `bash scripts/preflight/check-subagent-governance.sh`
+     - `bash scripts/preflight/check-compose-config-safe.sh`
+     - `bash scripts/preflight/collect-release-evidence.sh`
+     - `git diff --check`
+     - `docker compose up -d --build`
+     - HTTP `/`、`/boot/menu.ipxe` 和 `/api/boot-entry` 运行态 smoke 均通过。
+   - 本轮 Phase 3.15 收口审查：
+     - `research_agent`、`project_decision_agent`、`architecture_agent`、
+       `boot_entry_agent`、`network_safety_agent`、`security_audit_agent`
+       预审均 APPROVED，批准范围仅限只读 runtime 授权前计划。
+     - 实现后 `network_safety_agent`、`security_audit_agent` 收口均
+       APPROVED，无阻断项。
+     - `git_audit_agent` 审计 APPROVED for free-edition stage/commit
+       preparation；未发现商业代码、license、混淆产物或真实镜像误入
+       push 范围。
    - 单台测试机验证 UEFI PXE IPv4。
    - 验证普通终端 DHCP、网关、内网和互联网不受影响。
    - 当前状态：已创建只读文档草案；真实测试机验证等待 Phase 3.3 门禁解除。

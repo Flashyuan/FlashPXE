@@ -515,6 +515,7 @@ function renderBootEntry() {
   const configIntentPackage = bootEntry.isolated_lab_config_intent_package || {};
   const sourceSkeletonPackage = bootEntry.isolated_lab_source_skeleton_package || {};
   const manualDeclarationGate = bootEntry.isolated_lab_manual_declaration_gate || {};
+  const runtimeAuthorizationPlan = bootEntry.isolated_lab_runtime_authorization_plan || {};
   const isolatedPlan = bootEntry.isolated_validation_plan || {};
   const docItems = [
     documentation.local_verification_template,
@@ -853,6 +854,50 @@ function renderBootEntry() {
     ["下一门禁", manualDeclarationGate.next_gate || []],
   ];
   document.querySelector("#boot-entry-manual-declaration-gate").innerHTML = manualGateItems
+    .map(
+      ([label, items]) => `<article>
+        <h3>${escapeHtml(label)}</h3>
+        <p>${escapeHtml((items || []).filter(Boolean).join("；") || "无")}</p>
+      </article>`,
+    )
+    .join("");
+  const runtimeApprovalRows = (runtimeAuthorizationPlan.required_approvals || [])
+    .map((item) => `${item.role}: ${item.status || "required"} / stores=${item.stores_value ? "yes" : "no"}`);
+  const runtimeScopeRows = (runtimeAuthorizationPlan.runtime_scope_candidates || [])
+    .map((item) => `${item.id}: ${item.status || ""} execute=${item.allowed_to_execute ? "yes" : "no"}`);
+  const runtimeEvidenceRows = (runtimeAuthorizationPlan.boot_evidence_requirements || [])
+    .map((item) => {
+      const expected = item.expected || (item.expected_one_of || []).join(",");
+      return `${item.id}: expected=${expected} observed=${item.observed || "pending"} passed=${item.passed ? "yes" : "no"}`;
+    });
+  const runtimeServiceStateRows = Object.entries(runtimeAuthorizationPlan.network_service_state || {})
+    .map(([key, value]) => `${key}: ${value ? "yes" : "no"}`);
+  const runtimePlanItems = [
+    ["状态", [runtimeAuthorizationPlan.status || ""]],
+    ["阶段", [runtimeAuthorizationPlan.phase || ""]],
+    ["来源", [runtimeAuthorizationPlan.source || ""]],
+    ["依赖门禁", [`manual_gate=${runtimeAuthorizationPlan.depends_on_manual_gate_phase || ""}`]],
+    ["只读", [runtimeAuthorizationPlan.read_only ? "是" : "否"]],
+    ["运行边界", [
+      `runtime=${runtimeAuthorizationPlan.runtime_enabled ? "yes" : "no"}`,
+      `runtime_start=${runtimeAuthorizationPlan.runtime_start_allowed ? "yes" : "no"}`,
+      `service_start=${runtimeAuthorizationPlan.service_start_allowed ? "yes" : "no"}`,
+      `config_generation=${runtimeAuthorizationPlan.config_generation_allowed ? "yes" : "no"}`,
+      `production_lan=${runtimeAuthorizationPlan.production_lan_allowed ? "yes" : "no"}`,
+      `boot_tested=${runtimeAuthorizationPlan.boot_tested ? "yes" : "no"}`,
+    ]],
+    ["服务状态", runtimeServiceStateRows],
+    ["缺失手工事实", runtimeAuthorizationPlan.missing_manual_facts || []],
+    ["必要审批", runtimeApprovalRows],
+    ["候选范围", runtimeScopeRows],
+    ["非目标", runtimeAuthorizationPlan.explicit_non_goals || []],
+    ["转换要求", runtimeAuthorizationPlan.transition_requirements || []],
+    ["回滚条件", runtimeAuthorizationPlan.rollback_conditions || []],
+    ["启动证据要求", runtimeEvidenceRows],
+    ["未来研究项", runtimeAuthorizationPlan.future_research_items || []],
+    ["下一门禁", runtimeAuthorizationPlan.next_gate || []],
+  ];
+  document.querySelector("#boot-entry-runtime-authorization-plan").innerHTML = runtimePlanItems
     .map(
       ([label, items]) => `<article>
         <h3>${escapeHtml(label)}</h3>

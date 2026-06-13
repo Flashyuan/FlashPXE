@@ -90,6 +90,7 @@ def main() -> int:
     config_intent = boot_entry.get("isolated_lab_config_intent_package", {})
     source_skeleton = boot_entry.get("isolated_lab_source_skeleton_package", {})
     manual_gate = boot_entry.get("isolated_lab_manual_declaration_gate", {})
+    runtime_plan = boot_entry.get("isolated_lab_runtime_authorization_plan", {})
 
     require(boot_entry.get("phase") == "3.1", "boot-entry phase must remain 3.1")
     require(boot_entry.get("display_phase") == "3.4", "boot-entry display_phase must remain 3.4")
@@ -1001,6 +1002,147 @@ def main() -> int:
     manual_values_text = "\n".join(collect_string_values(manual_gate)).lower()
     for token in forbidden_manual_value_tokens:
         require(token not in manual_values_text, f"isolated_lab_manual_declaration_gate contains forbidden value token: {token}")
+
+    require(
+        runtime_plan.get("schema_version") == "phase3-isolated-lab-runtime-authorization-plan.v1",
+        "isolated_lab_runtime_authorization_plan schema mismatch",
+    )
+    require(runtime_plan.get("phase") == "3.15", "isolated_lab_runtime_authorization_plan phase mismatch")
+    require(
+        runtime_plan.get("plan_id") == "isolated_lab_runtime_authorization_plan",
+        "isolated_lab_runtime_authorization_plan id mismatch",
+    )
+    require(
+        runtime_plan.get("status") == "blocked_until_manual_facts_and_approvals",
+        "isolated_lab_runtime_authorization_plan status mismatch",
+    )
+    require(runtime_plan.get("read_only") is True, "isolated_lab_runtime_authorization_plan.read_only must be true")
+    require(runtime_plan.get("source") == "static_pre_review_plan", "isolated_lab_runtime_authorization_plan source mismatch")
+    require(
+        runtime_plan.get("depends_on_manual_gate_phase") == "3.14",
+        "isolated_lab_runtime_authorization_plan manual gate dependency mismatch",
+    )
+    for key in (
+        "request_is_authorization",
+        "authorization_granted",
+        "runtime_enabled",
+        "runtime_start_allowed",
+        "service_start_allowed",
+        "service_started",
+        "config_generation_allowed",
+        "config_files_generated",
+        "write_api_available",
+        "write_api_allowed",
+        "database_write_allowed",
+        "task_consumption_allowed",
+        "production_lan_allowed",
+        "production_lan_testing_allowed",
+        "boot_tested",
+        "observations_recorded",
+        "packet_capture_allowed",
+        "packet_capture_started",
+        "network_probe_allowed",
+        "network_probe_started",
+        "active_probe_allowed",
+        "command_execution_allowed",
+        "host_network_allowed",
+        "privileged_container_allowed",
+        "router_change_allowed",
+        "gateway_change_allowed",
+        "routing_change_allowed",
+        "firewall_change_allowed",
+        "dns_change_allowed",
+        "normal_dhcp_leases_enabled",
+        "manual_gate_ready",
+    ):
+        require_false(runtime_plan, key, "boot-entry.isolated_lab_runtime_authorization_plan")
+    runtime_service_state = runtime_plan.get("network_service_state", {})
+    for key in (
+        "d" + "hcp_server_enabled",
+        "proxy" + "d" + "hcp_enabled",
+        "tf" + "tp_enabled",
+        "udp_67_open",
+        "udp_69_open",
+        "udp_4011_open",
+        "udp_67_listening",
+        "udp_69_listening",
+        "udp_4011_listening",
+        "udp_67_mapped",
+        "udp_69_mapped",
+        "udp_4011_mapped",
+    ):
+        require_false(runtime_service_state, key, "boot-entry.isolated_lab_runtime_authorization_plan.network_service_state")
+    require(
+        set(runtime_plan.get("missing_manual_facts", [])) == set(manual_gate.get("missing_facts", [])),
+        "isolated_lab_runtime_authorization_plan must inherit manual gate missing facts",
+    )
+    approvals = runtime_plan.get("required_approvals", [])
+    require(isinstance(approvals, list) and len(approvals) >= 5, "isolated_lab_runtime_authorization_plan approvals required")
+    approval_text = " ".join(item.get("role", "") + " " + item.get("status", "") for item in approvals)
+    for token in ("research_agent", "network_safety_agent", "security_audit_agent", "project_decision_agent", "user_manual_confirmation"):
+        require(token in approval_text, f"isolated_lab_runtime_authorization_plan missing approval {token}")
+    for item in runtime_plan.get("runtime_scope_candidates", []):
+        require(item.get("status") == "candidate_only", f"isolated_lab_runtime_authorization_plan scope {item.get('id')} status mismatch")
+        require(item.get("allowed_to_execute") is False, f"isolated_lab_runtime_authorization_plan scope {item.get('id')} must not execute")
+    for key in (
+        "explicit_non_goals",
+        "transition_requirements",
+        "rollback_conditions",
+        "boot_evidence_requirements",
+        "future_research_items",
+        "next_gate",
+    ):
+        require(
+            isinstance(runtime_plan.get(key), list) and bool(runtime_plan[key]),
+            f"isolated_lab_runtime_authorization_plan.{key} must be a non-empty list",
+        )
+    for item in runtime_plan.get("boot_evidence_requirements", []):
+        require(item.get("observed") == "", f"isolated_lab_runtime_authorization_plan evidence {item.get('id')} must not include observations")
+        require(item.get("passed") is False, f"isolated_lab_runtime_authorization_plan evidence {item.get('id')} must remain unpassed")
+    runtime_text = " ".join(
+        runtime_plan.get("explicit_non_goals", [])
+        + runtime_plan.get("transition_requirements", [])
+        + runtime_plan.get("rollback_conditions", [])
+        + runtime_plan.get("next_gate", [])
+    )
+    for token in ("runtime authorization", "ordinary client leases", "production", "reviewer approvals"):
+        require(token in runtime_text, f"isolated_lab_runtime_authorization_plan must preserve blocked wording for {token}")
+    forbidden_runtime_value_tokens = (
+        "dnsmasq",
+        "tftpd",
+        "dhcp-range",
+        "dhcp-boot",
+        "pxe-service",
+        "enable-tftp",
+        "docker compose",
+        "network_mode: host",
+        "privileged: true",
+        "iptables",
+        "nft",
+        "ufw",
+        "firewall-cmd",
+        "ip route",
+        "nmcli",
+        "systemctl",
+        "service start",
+        "curl",
+        "wget",
+        "ssh",
+        "scp",
+        "token=",
+        "password=",
+        "begin private key",
+        "mac:",
+        "ip:",
+        "192.168.",
+        "10.",
+        "172.16.",
+        "client serial",
+        "customer name",
+    )
+    runtime_values_text = "\n".join(collect_string_values(runtime_plan)).lower()
+    for token in forbidden_runtime_value_tokens:
+        require(token not in runtime_values_text, f"isolated_lab_runtime_authorization_plan contains forbidden value token: {token}")
 
     require(isolated_plan.get("phase") == "3.5", "isolated_validation_plan phase mismatch")
     require(isolated_plan.get("mode") == "readonly_plan_only", "isolated_validation_plan mode mismatch")
