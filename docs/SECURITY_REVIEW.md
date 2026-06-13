@@ -86,7 +86,7 @@ docker compose down
 
 ```bash
 SERVER_IP=192.168.1.168 bash scripts/preflight/check-network-safety.sh
-SERVER_IP=192.168.1.168 docker compose config
+SERVER_IP=192.168.1.168 bash scripts/preflight/check-compose-config-safe.sh
 docker compose up -d --build
 curl http://localhost:18080/
 curl http://localhost:18080/boot/menu.ipxe
@@ -155,10 +155,10 @@ bash -n scripts/preflight/check-network-safety.sh scripts/generate-ipxe-menu.sh 
 
 ```bash
 python3 -m py_compile apps/api/main.py apps/worker/scan_images.py
-python3 scripts/preflight/check-phase3-gates.py
+rm -rf apps/api/__pycache__ apps/worker/__pycache__ scripts/preflight/__pycache__ && python3 scripts/preflight/check-phase3-gates.py && test -z "$(find apps scripts -path '*/__pycache__*' -print)"
 node --check apps/web/assets/app.js
 bash scripts/preflight/check-network-safety.sh
-docker compose config
+bash scripts/preflight/check-compose-config-safe.sh
 ss -lntu | grep -E ':(67|68|69|4011)\b' || true
 rg -n "network_mode: host|privileged: true|67:|68:|69:|4011:|dnsmasq|proxydhcp|tftp|dhcp" docker-compose.yml scripts apps config docs PLAN.md README.md
 git diff --check
@@ -168,10 +168,10 @@ Phase 3.6 收口补充验证，覆盖 Phase 3.4 本地事实门禁面板：
 
 ```bash
 python3 -m py_compile apps/api/main.py apps/worker/scan_images.py
-python3 scripts/preflight/check-phase3-gates.py
+rm -rf apps/api/__pycache__ apps/worker/__pycache__ scripts/preflight/__pycache__ && python3 scripts/preflight/check-phase3-gates.py && test -z "$(find apps scripts -path '*/__pycache__*' -print)"
 node --check apps/web/assets/app.js
 bash scripts/preflight/check-network-safety.sh
-docker compose config
+bash scripts/preflight/check-compose-config-safe.sh
 ss -lntu | grep -E ':(67|68|69|4011)\b' || true
 git diff --check
 ```
@@ -179,6 +179,7 @@ git diff --check
 补充 smoke test 覆盖：
 
 - `scripts/preflight/check-phase3-gates.py` 可重复校验以下只读门禁条件。
+- `check-phase3-gates.py` 加载 API 状态模型时不生成 `__pycache__`。
 - `phase=3.1` 仍表示后端只读模型阶段。
 - `display_phase=3.4` 和 `display_status` 仅表示 Web UI 只读展示阶段。
 - `phase3_3_gate.status=router_option_path_not_recommended_but_blocked`。

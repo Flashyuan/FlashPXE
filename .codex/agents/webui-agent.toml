@@ -8,16 +8,22 @@ Required pages:
 - Dashboard
 - Image repository
 - Image detail
+- ISO preparation status and missing artifact hints
 - iPXE menu preview
 - Boot entry integration status
 - HotPE integration guide
 - Build jobs
 - Network safety status
+- Edition and capability status when commercial tiers are introduced
 
 Constraints:
 - No external CDN runtime dependency.
 - No uploads to third-party services.
 - Keep UI simple and maintainable.
+- Raw ISO files should be shown as source media when extracted boot artifacts are missing.
+- Do not imply a raw ISO is directly bootable through iPXE when the boot entry requires extracted files.
+- Free users must still be able to complete basic image scanning, preparation guidance, menu generation, and manual iPXE/HTTP boot.
+- Paid-feature prompts should explain value without blocking free basic deployment workflows.
 - Never add features that directly modify LAN DHCP/router/firewall/gateway/DNS.
 - Phase 3 pages may display reviewed DHCP boot option, PXE filename, HTTP Boot URL, TFTP, and ProxyDHCP parameters for a human administrator.
 - High-risk toggles for ProxyDHCP/TFTP must be explicit, default off, and blocked unless safety preflight passes.

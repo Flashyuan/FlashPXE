@@ -858,7 +858,7 @@ curl http://localhost:18080/boot/menu.ipxe
 8. 让 image_factory_agent 只实现镜像制作任务框架和 Ubuntu autoinstall 模板，不要承诺 Linux 上完整封装 Windows ISO。
 9. 让 tutorial_docs_agent 维护 README、架构说明、用户教程和安全边界文档。
 10. 最后让 security_audit_agent 和 network_safety_agent 共同审查所有变更。
-11. 每完成一个功能或 milestone 后，让 git_audit_agent 审查 diff；通过后自动创建本地 commit，并在 project_decision_agent 批准后 push 当前 GitHub 分支。
+11. 每完成一个功能或 milestone 后，让 git_audit_agent 审查 diff；通过后可准备本地 commit；push 当前 GitHub 分支前必须经 project_decision_agent 批准并获得用户二次确认。
 
 强制要求：
 - 不得修改 DHCP。
@@ -1185,11 +1185,11 @@ Web UI agent。
 - 审查 git diff、暂存范围、未跟踪文件和生成文件。
 - 确认无无关文件、无秘密信息、无危险网络变更。
 - 确认必要验证命令已经执行，或明确记录未执行原因。
-- 审计通过后可自动 stage 并创建本地 commit。
+- 审计通过后可在用户确认范围内 stage 并创建本地 commit。
 - commit message 必须说明阶段目标、核心变更和安全边界。
 - 若变更涉及网络、Compose、脚本、启动入口或安全边界，push 前必须有 `network_safety_agent` 和/或 `security_audit_agent` 的通过结论。
 - push 到 GitHub 当前分支前必须记录 remote、branch、commit range、提交摘要和风险摘要。
-- `project_decision_agent` 确认符合项目方向后，可自动 push 到 GitHub 当前分支。
+- `project_decision_agent` 确认符合项目方向后，经用户二次确认后才可 push 到 GitHub 当前分支。
 - 不得 push secrets、`.env`、真实凭据、无关文件、危险脚本或未审查的网络影响变更。
 
 ---
@@ -1566,7 +1566,7 @@ curl http://localhost:18080/boot/menu.ipxe
 
 - `network_safety_agent` 终审。
 - `security_audit_agent` 终审。
-- `git_audit_agent` 阶段收口审查、创建本地 commit，并在决策通过后 push 当前分支。
+- `git_audit_agent` 阶段收口审查、准备本地 commit，并在决策通过且用户二次确认后 push 当前分支。
 
 验收：
 
@@ -1574,7 +1574,7 @@ curl http://localhost:18080/boot/menu.ipxe
 - 所有 BLOCKED 项已修复。
 - 每个功能或 milestone 均有对应 git 审计记录和本地 commit。
 - `git_audit_agent` 记录目标 remote/branch/commit range 和风险摘要。
-- `project_decision_agent` 确认阶段方向后自动 push 当前 GitHub 分支。
+- `project_decision_agent` 确认阶段方向后，push 当前 GitHub 分支前仍需用户二次确认。
 
 验证记录：
 
@@ -1590,7 +1590,7 @@ curl http://localhost:18080/boot/menu.ipxe
   - `python3 -m py_compile apps/api/main.py apps/worker/scan_images.py`
   - `node --check apps/web/assets/app.js`
   - `bash scripts/preflight/check-network-safety.sh`
-  - `docker compose config`
+  - `bash scripts/preflight/check-compose-config-safe.sh`
   - loopback API smoke test 覆盖镜像元数据和 Image Factory 任务状态流。
 - 此前本机 `8080/tcp` 已有监听，因此默认对外端口已迁移到 `18080/tcp`。本轮已使用默认端口完成验证：
 
@@ -1619,7 +1619,7 @@ docker compose down
 
 ```bash
 bash scripts/preflight/check-network-safety.sh
-docker compose config
+bash scripts/preflight/check-compose-config-safe.sh
 python -m compileall apps
 bash -n scripts/preflight/check-network-safety.sh
 curl http://localhost:18080/
@@ -1664,7 +1664,7 @@ docker compose down
 8. image_factory_agent 实现安全的镜像工厂任务框架。
 9. tutorial_docs_agent 负责架构说明书、图例和对外 README。
 10. security_audit_agent 和 network_safety_agent 做最终审查。
-11. git_audit_agent 在每个功能或 milestone 完成后审查 diff；通过后自动创建本地 commit，并在 project_decision_agent 批准后 push 当前 GitHub 分支。
+11. git_audit_agent 在每个功能或 milestone 完成后审查 diff；通过后可准备本地 commit；push 当前 GitHub 分支前必须经 project_decision_agent 批准并获得用户二次确认。
 
 强制安全要求：
 - 不得启用 DHCP。
@@ -1980,9 +1980,9 @@ Phase 3 阶段收口 agent。
 - 每完成 Phase 3 的一个可验证步骤后审查 diff 和验证记录。
 - 确认未把真实路由器账号、截图敏感信息、token、内网凭据写入仓库。
 - 确认 TFTP/ProxyDHCP/DHCP boot option 相关变更已经经过 `network_safety_agent` 与 `security_audit_agent` 审查。
-- 审计通过后自动创建本地 commit。
+- 审计通过后可准备本地 commit。
 - 记录 remote、branch、commit range、提交摘要和风险摘要。
-- `project_decision_agent` 确认符合项目方向后，自动 push 到当前 GitHub 分支。
+- `project_decision_agent` 确认符合项目方向后，经用户二次确认后 push 到当前 GitHub 分支。
 
 ### 21.7 Phase 3 验证命令
 
@@ -1990,7 +1990,7 @@ Phase 3 阶段收口 agent。
 
 ```bash
 bash scripts/preflight/check-network-safety.sh
-docker compose config
+bash scripts/preflight/check-compose-config-safe.sh
 curl http://localhost:18080/boot/menu.ipxe
 curl http://localhost:18080/boot/loaders/ipxe.efi
 curl http://localhost:18080/api/boot-entry
@@ -2024,7 +2024,7 @@ curl http://localhost:18080/api/boot-entry
 - `research_agent` 已加入前置调查流程。
 - `project_decision_agent` 已加入方向决策流程，仅在重大取舍或路线冲突时触发。
 - `boot_entry_agent` 已替代旧的 `pxe_agent` 概念，负责 HTTP Boot、PXE Boot、iPXE chainload。
-- `git_audit_agent` 已加入阶段收口流程，负责功能/milestone 完成后的 diff 审计、本地 commit 和自动 push 当前 GitHub 分支。
+- `git_audit_agent` 已加入阶段收口流程，负责功能/milestone 完成后的 diff 审计、本地 commit 和经用户二次确认后 push 当前 GitHub 分支。
 - Phase 3 仍处于规划与前置调查阶段，尚未实现或启用自动 PXE 入口。
 - Phase 3.0 前置调查已完成首轮公开资料研究，记录见
   `docs/BOOT_ENTRY_RESEARCH.md`。
@@ -2089,7 +2089,7 @@ curl http://localhost:18080/api/boot-entry
      - `python3 -m py_compile apps/api/main.py apps/worker/scan_images.py`
      - `node --check apps/web/assets/app.js`
      - `bash scripts/preflight/check-network-safety.sh`
-     - `docker compose config`
+     - `bash scripts/preflight/check-compose-config-safe.sh`
      - `nginx -t` 使用本地 `nginx:1.27-alpine` 镜像通过。
      - `/api/boot-assets` loopback smoke test 覆盖：
        `usable`、`blocked_symlink`、`blocked_parent_symlink`。
@@ -2153,7 +2153,7 @@ curl http://localhost:18080/api/boot-entry
      - `python3 -m py_compile apps/api/main.py apps/worker/scan_images.py`
      - `node --check apps/web/assets/app.js`
      - `bash scripts/preflight/check-network-safety.sh`
-     - `docker compose config`
+     - `bash scripts/preflight/check-compose-config-safe.sh`
      - `ss -lntu | grep -E ':(67|68|69|4011)\b' || true`
      - `rg -n "network_mode: host|privileged: true|67:|68:|69:|4011:|dnsmasq|proxydhcp|tftp|dhcp" docker-compose.yml scripts apps config docs PLAN.md README.md`
      - `git diff --check`
@@ -2178,25 +2178,220 @@ curl http://localhost:18080/api/boot-entry
      可重复校验 `/api/boot-entry` 与 `/api/network-safety` 的 Phase 3
      门禁字段仍为只读 blocked 状态，且实现、服务启用、生产 LAN 测试均
      不允许。
+   - 本轮只读预检补强：`check-phase3-gates.py` 加载 API 状态模型时禁止
+     写入 Python bytecode，避免生成 `__pycache__` 并保持预检工作区只读。
+   - 本轮隔离验证准备增强：`/api/boot-entry` 增加
+     `isolated_validation_plan` 只读结构，Web UI “启动入口”页展示隔离
+     验证目标链路、环境要求、允许准备、禁止动作、实验前证据、未来成功
+     标准和退出条件；字段显式声明 `runtime_enabled=false`、
+     `production_lan_allowed=false`、`udp_ports_allowed=[]`，不启用
+     DHCP、ProxyDHCP、TFTP 或生产 LAN 测试。
+   - 本轮 Phase 3.5 预检补强：`check-phase3-gates.py` 断言
+     `isolated_validation_plan` 只能保持 `readonly_plan_only`，并校验
+     主 DHCP `192.168.1.1`、默认网关 `192.168.1.4`、服务关闭和 UDP
+     端口不开放等机器可读不变量。
+   - 本轮 PXE IPv4 readiness 增强：`/api/boot-entry` 增加
+     `pxe_ipv4_readiness` 只读结构，汇总 `menu.ipxe`、`snponly.efi`、
+     `ipxe.efi`、镜像元数据、ready 菜单项和 Phase 3 门禁状态；字段显式
+     声明 `operation_allowed=false`、`service_enablement_allowed=false`、
+     `production_lan_testing_allowed=false`、`runtime_enabled=false`、
+     `boot_tested=false`，并保留生产 LAN、DHCP、ProxyDHCP、TFTP、UDP
+     端口、Docker host network/privileged、OpenWrt/TP-Link 变更等 false
+     安全不变量。
+   - 本轮 PXE IPv4 readiness 当前实测：本地 `data` 只读快照可识别
+     `source_iso_count=4`，且 Ubuntu 22.04.3/24.04 启动依赖准备后
+     `ready_menu_entry_count=6`；`snponly.efi` 与 `ipxe.efi` 仍为
+     `missing`，因此 `lab_prerequisites_met=false`，真实 PXE IPv4 隔离
+     实验仍不能开始。
+   - 本轮 loader 缺口推进：新增 `scripts/boot-assets/import-loader.py`，
+     管理员可导入本地已审核的 `ipxe.efi`、`snponly.efi`、`undionly.kpxe`
+     或 `ipxe.iso`。脚本只接受本地文件，固定白名单文件名，使用
+     `os.O_EXCL` 禁止覆盖，记录 provenance 到
+     `data/boot/loader-metadata`，不下载、不生成、不执行 loader，不启用
+     DHCP、ProxyDHCP、TFTP 或任何网络服务。
+   - 本轮官方 iPXE 归档导入准备：新增
+     `scripts/boot-assets/import-ipxe-archive.py`，可从管理员提供的本地
+     `ipxeboot.tar.gz` 或等价归档中提取固定白名单成员，例如
+     `ipxeboot/x86_64-sb/snponly.efi`、`ipxeboot/x86_64-sb/ipxe.efi`、
+     `x86_64-efi/snponly.efi` 或 `x86_64-efi/ipxe.efi`，并复用单文件
+     导入校验。该脚本不联网、不整包解压、不执行 loader，也不启用任何
+     网络启动服务。
+   - 新增 `docs/IPXE_LOADER_SOURCES.md`，记录 iPXE 官方来源、Secure Boot
+     风险、本地文件导入和本地归档导入方式；该文档只作为来源和操作说明，
+     不授权生产 LAN 启动集成。
+   - `/api/boot-assets` 现在区分 loader 文件存在、provenance 是否存在、
+     SHA256 是否匹配和 `reviewed_for_lab` 状态；`pxe_ipv4_readiness`
+     只有在 `snponly.efi` 或 `ipxe.efi` 文件与 provenance 均满足时，才把
+     UEFI PXE loader 视为隔离实验前置满足。
+   - 本轮已在项目本机下载官方 iPXE release 归档到 ignored runtime 目录：
+     `data/builds/loader-downloads/ipxeboot.tar.gz`，归档 SHA256 为
+     `01a526d4cc791fc30362259c609d6c506cc64a7bdff51b9a5eb788354e17eee1`。
+     已通过 `import-ipxe-archive.py` 导入：
+     - `data/boot/loaders/snponly.efi`，
+       SHA256 `b1e67c3e4a1e8708ddfd0079ad4505e3a02245acb55ee9a95437ab3c507be82a`。
+     - `data/boot/loaders/ipxe.efi`，
+       SHA256 `6558e37887516b246d6a97122e8d18bedfe4197b7ba7f67bf1bf102a16678d33`。
+     两个 loader 均有 provenance，`reviewed_for_lab=true`，且真实二进制和
+     metadata 均被 `.gitignore` 排除。
+   - 当前 `pxe_ipv4_readiness.lab_prerequisites_met=true`，表示 HTTP 菜单、
+     ready 镜像条目和 reviewed UEFI loader 这些文件级前置已满足；但
+     `pxe_ipv4_readiness.status` 仍为 `blocked_by_phase3_gate`，不得据此
+     启用生产 LAN DHCP、ProxyDHCP、TFTP 或 UDP `67/69/4011`。
+   - 本轮 Phase 3.10/3.11/3.12/3.13/3.14 继续推进隔离实验前置链路，但仍保持只读：
+     - `isolated_lab_boot_services_disabled_skeleton` 只表达未来隔离实验的
+       ProxyDHCP metadata-only 与 TFTP loader-only 候选服务骨架，所有服务、
+       配置生成、命令执行、Compose 变更和生产 LAN 字段均为 false。
+     - `isolated_lab_evidence_package` 汇总 HTTP menu、reviewed loader、
+       ready 镜像、UDP 端口只读证据、人工隔离实验声明、客户端证据模板和
+       授权草案；`status=not_authorized`，不等于实验授权。
+     - `isolated_lab_config_intent_package` 作为 Phase 3.12 只读配置意图包，
+       仅展示未来单机隔离实验的 dry-run intent：候选服务意图、端口意图、
+       candidate bootfile、reviewed loader allowlist、HTTP chain target、
+       客户端验证清单、人工授权门禁和回滚触发；它不是配置生成器，不被
+       任务系统消费，不启动服务，不开放 UDP 端口，不允许生产 LAN。
+     - `isolated_lab_source_skeleton_package` 作为 Phase 3.13 只读源码骨架 /
+       离线包模型，仅表达未来单机隔离实验的协议模型、boot metadata 模型、
+       loader transfer scope、HTTP chain target、client evidence fixture 和
+       授权门禁；它 `status=not_runnable`、`fixture_only=true`、
+       `offline_package_only=true`，没有运行入口、Compose service、生成文件、
+       opened ports、任务消费者或网络监听器。
+     - `isolated_lab_manual_declaration_gate` 作为 Phase 3.14 只读手工声明
+       门禁，仅表达进入真实隔离实验 runtime 前管理员必须人工确认的事实模板；
+       它 `status=missing_facts`、`submission_status=not_submitted`、
+       `authorization_status=not_authorized`，不收集、不保存、不回传真实
+       客户端或实验环境值，不新增写 API，不解锁 runtime。
+   - 本轮 Phase 3.12 运行态证据：
+     - `/api/boot-entry` 返回
+       `schema=phase3-isolated-lab-config-intent-package.v1`、
+       `phase=3.12`、`mode=readonly_config_intent_package`、
+       `status=not_authorized`、`read_only=true`。
+     - `enabled`、`authorized`、`runtime_enabled`、`config_files_generated`、
+       `config_generation_allowed`、`command_execution_allowed`、
+       `service_start_allowed`、`write_api_available`、`compose_change_allowed`、
+       `router_config_generation_allowed`、`production_lan_allowed`、
+       `production_lan_testing_allowed`、`packet_capture_started`、
+       `network_probe_started`、`task_consumption_allowed`、`boot_tested`
+       均为 false。
+     - UDP `67/69/4011` 均为 `observed_listening=false`、
+       `desired_listening=false`，`ss -lntu` 未显示这些端口监听。
+     - `candidate_bootfile=snponly.efi`，loader allowlist 为
+       `snponly.efi` 与 `ipxe.efi`；客户端验证清单全部未通过且无
+       observed 值，表示尚未进入真实实验。
+   - 本轮 Phase 3.12 收口审查：
+     - `project_decision_agent`、`architecture_agent`、`boot_entry_agent`、
+       `network_safety_agent`、`security_audit_agent` 预审均 APPROVED，
+       批准范围仅限只读配置意图 / dry-run 展示。
+     - 实现后 `network_safety_agent`、`security_audit_agent`、
+       `git_audit_agent` 收口均 APPROVED。
+     - 验证通过：`check-subagent-governance.sh`、`check-phase3-gates.py`、
+       `check-network-safety.sh`、`collect-release-evidence.sh`、
+       `node --check apps/web/assets/app.js`、`git diff --check`，且无
+       `__pycache__`。
+   - 本轮 Phase 3.13 运行态证据：
+     - `/api/boot-entry` 返回
+       `schema=phase3-isolated-lab-source-skeleton.v1`、`phase=3.13`、
+       `mode=readonly_source_skeleton`、`status=not_runnable`、
+       `read_only=true`、`fixture_only=true`、`offline_package_only=true`。
+     - `runtime_enabled`、`runtime_available`、`service_start_allowed`、
+       `service_started`、`command_execution_allowed`、`config_generation_allowed`、
+       `write_api_available`、`compose_integration_allowed`、
+       `production_lan_allowed`、`packet_send_allowed`、`packet_capture_allowed`、
+       `active_probe_allowed`、`task_consumption_allowed`、`boot_tested`
+       均为 false。
+     - `runtime_entrypoints`、`compose_services`、`generated_files`、
+       `opened_ports`、`task_consumers`、`network_listeners` 均为空数组。
+     - UDP `67/69/4011` 均为 `observed_listening=false`、
+       `desired_listening=false`，`ss -lntu` 未显示这些端口监听。
+     - 新增 fixture
+       `config/synaboot/phase3.13-isolated-lab-source-skeleton.disabled.json`，
+       文件不可执行、无 shebang、`loaded_at_runtime=false`，只作为
+       离线样例和预检对象。
+   - 本轮 Phase 3.13 收口审查：
+     - `research_agent`、`project_decision_agent`、`architecture_agent`、
+       `boot_entry_agent`、`network_safety_agent`、`security_audit_agent`
+       预审均 APPROVED，批准范围仅限不可运行的离线协议模型、fixture 和
+       只读状态。
+     - 实现后 `network_safety_agent`、`security_audit_agent`、
+       `git_audit_agent` 收口均 APPROVED。
+     - 验证通过：`check-subagent-governance.sh`、`check-phase3-gates.py`、
+       `check-network-safety.sh`、`collect-release-evidence.sh`、
+       `node --check apps/web/assets/app.js`、`git diff --check`，且无
+       `__pycache__`。
+   - 本轮 Phase 3.14 运行态证据：
+     - `/api/boot-entry` 返回
+       `schema=phase3-isolated-lab-manual-declaration-gate.v1`、
+       `phase=3.14`、`mode=readonly_manual_declaration_gate`、
+       `status=missing_facts`、`read_only=true`、`template_only=true`。
+     - `required_manual_facts=9`、`missing_facts=9`，所有手工事实模板项
+       均保持 `status=missing`、`stores_value=false`。
+     - `collects_user_input`、`stores_user_input`、`write_api_available`、
+       `database_write_allowed`、`config_generation_allowed`、
+       `service_start_allowed`、`runtime_enabled`、`runtime_unlock_allowed`、
+       `production_lan_allowed`、`production_lan_testing_allowed`、`boot_tested`
+       均为 false。
+     - `boot_path_checklist` 中客户端固件入口、loader 请求、HTTP menu 目标和
+       ready image menu 均无 `observed` 值，且 `passed=false`。
+     - UDP `67/69/4011` 在该 gate 的 `network_service_state` 中全部为
+       open/opened/mapped/listening false；`ss -lntu` 未显示这些端口监听。
+   - 本轮 Phase 3.14 验证记录：
+     - `PYTHONDONTWRITEBYTECODE=1 python3 scripts/preflight/check-phase3-gates.py`
+     - `node --check apps/web/assets/app.js`
+     - `python3 -m py_compile apps/api/main.py` 后已清理生成的 `__pycache__`
+     - `bash scripts/preflight/check-network-safety.sh`
+     - `bash scripts/preflight/check-subagent-governance.sh`
+     - `bash scripts/preflight/check-compose-config-safe.sh`
+     - `bash scripts/preflight/collect-release-evidence.sh`
+     - `git diff --check`
+     - `docker compose up -d --build`
+     - HTTP `/`、`/boot/menu.ipxe`、`/boot/loaders/snponly.efi`、
+       `/boot/loaders/ipxe.efi` 和 `/api/boot-entry` 运行态 smoke 均通过。
+   - 本轮 Phase 3.14 收口审查：
+     - `network_safety_agent` 收口 APPROVED，无阻断项；确认未启用
+       DHCP、ProxyDHCP、TFTP，未开放 UDP `67/69/4011`，未触碰 TP-Link、
+       OpenWrt、路由、网关、防火墙或 DNS。
+     - `security_audit_agent` 收口 APPROVED，无阻断项；确认 gate 只读、
+       template-only，不收集/保存真实环境值，不新增写 API、raw command、
+       配置片段、secret 或生产 LAN 测试入口。
+     - `git_audit_agent` 审计 APPROVED for stage/commit preparation；免费版
+       发布范围可整理提交，未发现商业源码、license 或混淆产物进入免费版
+       push 范围；push 前仍需先完成本地提交并运行 push readiness。
    - 单台测试机验证 UEFI PXE IPv4。
    - 验证普通终端 DHCP、网关、内网和互联网不受影响。
    - 当前状态：已创建只读文档草案；真实测试机验证等待 Phase 3.3 门禁解除。
-   - 本轮文档门禁同步验证记录：
-     - `python3 scripts/preflight/check-phase3-gates.py`
+   - 本轮 Phase 3.5 验证记录：
+     - `python3` AST parse 检查 `apps/api/main.py` 与
+       `scripts/preflight/check-phase3-gates.py`，不生成 `__pycache__`。
+     - `node --check apps/web/assets/app.js`
      - `bash scripts/preflight/check-network-safety.sh`
-     - `docker compose config`
+     - `python3 scripts/preflight/check-phase3-gates.py`
+     - `boot_entry_status()` smoke test 覆盖 `isolated_validation_plan.phase=3.5`、
+       `runtime_enabled=false`、`production_lan_allowed=false`、
+       `udp_ports_allowed=[]`。
+     - `boot_entry_status()` smoke test 覆盖 `pxe_ipv4_readiness.status=blocked_by_phase3_gate`、
+       `source_iso_count=4`、`ready_menu_entry_count=6`、
+       `snponly.efi/ipxe.efi=missing`、`runtime_enabled=false`、
+       `production_lan_allowed=false`、`boot_tested=false`。
+     - 空 `data/metadata` 临时目录 smoke test 覆盖
+       `pxe_ipv4_readiness` 只读降级，不创建 SQLite、不迁移 schema、不写
+       metadata 文件。
+     - root-owned 现有 SQLite smoke test 覆盖只读快照读取：
+       `metadata_status=readonly_snapshot`、`source_iso_count=4`。
+   - 本轮文档门禁同步验证记录：
+     - `rm -rf apps/api/__pycache__ apps/worker/__pycache__ scripts/preflight/__pycache__ && python3 scripts/preflight/check-phase3-gates.py && test -z "$(find apps scripts -path '*/__pycache__*' -print)"`
+     - `bash scripts/preflight/check-network-safety.sh`
+     - `bash scripts/preflight/check-compose-config-safe.sh`
      - `ss -lntu | grep -E ':(67|68|69|4011)\b' || true`
      - `rg -n "network_mode: host|privileged: true|67:|68:|69:|4011:|dnsmasq|proxydhcp|tftp|dhcp" docker-compose.yml scripts apps config docs PLAN.md README.md`
      - `git diff --check`
    - 本轮架构文档同步验证记录：
      - `bash scripts/preflight/check-network-safety.sh`
-     - `docker compose config`
+     - `bash scripts/preflight/check-compose-config-safe.sh`
      - `ss -lntu | grep -E ':(67|68|69|4011)\b' || true`
      - `rg -n "network_mode: host|privileged: true|67:|68:|69:|4011:|dnsmasq|proxydhcp|tftp|dhcp" docker-compose.yml scripts apps config docs PLAN.md README.md`
      - `git diff --check`
    - 本轮本地只读确认模板验证记录：
      - `bash scripts/preflight/check-network-safety.sh`
-     - `docker compose config`
+     - `bash scripts/preflight/check-compose-config-safe.sh`
      - `ss -lntu | grep -E ':(67|68|69|4011)\b' || true`
      - `rg -n "network_mode: host|privileged: true|67:|68:|69:|4011:|dnsmasq|proxydhcp|tftp|dhcp" docker-compose.yml scripts apps config docs PLAN.md README.md`
      - `git diff --check`
@@ -2206,7 +2401,7 @@ curl http://localhost:18080/api/boot-entry
    - `security_audit_agent` 复审。
    - `git_audit_agent` 审查 diff、验证记录和敏感信息。
    - 审计通过后创建本地 commit。
-   - `project_decision_agent` 确认阶段方向后，由 `git_audit_agent` 自动 push 当前 GitHub 分支。
+   - `project_decision_agent` 确认阶段方向后，由 `git_audit_agent` 经用户二次确认后 push 当前 GitHub 分支。
    - 本轮 Phase 3.6 收口补充：已将 Phase 3.4 “本地事实门禁”只读面板的
      审查结论、验证命令和禁止推断边界同步到 `docs/SECURITY_REVIEW.md`
      与 `docs/NETWORK_SAFETY.md`。
@@ -2215,26 +2410,130 @@ curl http://localhost:18080/api/boot-entry
 
 用户期望：
 
-- `git_audit_agent` 审计确认无问题后，自动 push 到 GitHub 当前分支。
+- `git_audit_agent` 审计确认无问题后，经用户二次确认后 push 到 GitHub 当前分支。
 
 当前执行策略：
 
 - 远程 push 降级为版本控制收口动作，不再按 LAN 高风险操作处理。
 - `git_audit_agent` 审计 diff、secrets、危险脚本、无关文件和验证记录。
 - 涉及网络、Compose、脚本、启动入口或安全边界的变更，必须先通过 `network_safety_agent` 和/或 `security_audit_agent`。
-- `project_decision_agent` 确认阶段方向和推送范围后，`git_audit_agent` 自动 push 到 GitHub 当前分支。
+- `project_decision_agent` 确认阶段方向和推送范围后，`git_audit_agent` 经用户二次确认后 push 到 GitHub 当前分支。
 - 不得 push secrets、`.env`、真实凭据、未审查网络影响变更或无关文件。
 
 当前远程与分支：
 
 ```text
-remote: origin git@github.com:Flashyuan/FlashPXE.git
+origin_remote: github
+origin_host: github.com
 branch: codex/synaboot-phase1
 ```
 
 ---
 
 ## 23. Subagents 协作模式与通信机制
+
+### 23.0 Subagent 调用成本与会话治理
+
+问题记录：
+
+- `PLAN.md` 中定义的是 11 个长期角色，不代表每次遇到小问题都新建一个
+  subagent 会话。
+- 此前执行中，主控把多个小型补丁、复测和非阻断建议都当成独立审计点，
+  反复新开 architecture/security/git 等 agent 会话，导致会话数量远超
+  11 个角色定义，浪费 token。
+- 根因不是角色职责错误，也不是 subagent 不该用，而是缺少“已有会话如何
+  复用、何时合并审计、何时才新增会话”的调度规则。
+
+修正原则：
+
+- 11 个 subagents 是**角色池**，不是“每轮都要全部启动”的任务队列。
+- `.codex/agents/*.toml` 是角色定义，右侧窗口是 UI 会话显示，`send_input`/
+  `close_agent` 使用的是当前工具层 agent registry。三者不是同一个状态源：
+  - UI 里仍显示的历史窗口，不代表当前工具层还能访问。
+  - 工具层返回 `agent not found` 时，表示该 agent id 已不在当前 registry，
+    必须标记为 stale，不得继续假装可复用。
+  - 工具层返回子模型解析错误时，表示 spawn 没有成功创建会话；该失败不算
+    已创建 agent，也不得反复重试刷屏。
+- 每个 milestone 开始前必须执行“固定会话池启动协议”：
+  - 先清点上轮登记的 role -> agent_id。
+  - 对可恢复/可通信的会话继续复用。
+  - 对 `agent not found`、无法恢复或答案已明显偏离角色职责的会话标记
+    `stale`，不再发送任务。
+  - 只在工具层可正常 spawn 时，为 11 个项目角色建立固定会话池。
+  - 固定会话池建立后，本 milestone 只向登记会话发送任务，不临时新开同类角色。
+  - 若固定会话池无法建立，应暂停并向用户报告工具层失败，而不是用一批临时
+    agent 替代。
+- 同一 milestone 内，同一角色优先复用同一个会话；需要补充信息、复测结果、
+  新补丁或修复说明时，优先 `send_input` 回传给已有会话。
+- 主控必须维护当前 milestone 的会话登记：角色名、会话状态、最后一次输入
+  摘要。只有确认没有可复用会话、原会话已经结束/失效，或任务范围已经跨越
+  原角色职责边界时，才允许新建对应角色会话。
+- 长期协作台账见 `docs/SUBAGENT_SESSION_POOL.md`。该文档必须记录角色岗位、
+  agent id、状态、操作流水、可引用结论、完成进度和 stale/重建原因；
+  不记录 token、商业源码、私有配置或镜像内容。上下文压缩或线程恢复后，
+  主控必须先读取该台账，再声明 subagent 状态或引用其旧结论。
+- `docs/SUBAGENT_SESSION_POOL.md` 必须保留协作统计与压缩恢复快照，至少记录
+  `role`、`agent_id`、`status`、`operation_log`、`latest_topic`、
+  `progress`、`reusable_conclusion` 和 `next_reuse_rule`。未登记在台账中的
+  subagent 结论，压缩恢复后不得当作已批准事实引用。
+- 压缩恢复后，`docs/SUBAGENT_SESSION_POOL.md` 是 subagent 协作结论的唯一长期
+  记忆锚点。聊天摘要只能用于定位，不得单独作为 APPROVED、BLOCKED、完成进度
+  或发布范围的证据。
+- 恢复工作时必须先读取“协作统计与压缩恢复快照”和“结论与进度表”。只有同时
+  具备 `agent_id`、操作流水、可复用结论和证据的记录，才允许被引用到最终回答
+  或后续开发决策中。
+- `completed=null`、空输出、spawn 失败、`agent not found` 或未登记回复不得
+  被登记为 APPROVED。此类情况必须写入流水并标记为未确认、失败或 `stale`。
+- 小型文档同步、预检脚本文案调整、无行为变化的错误信息整理，默认由主控
+  本地完成并运行验证命令；如果已有相关 subagent 会话处于活跃状态，应将
+  结果合并回传，而不是另开新会话。
+- 多个相关小改动必须先合并成一个审计包，再统一交给必要 agent 复核。
+- 非阻断建议由主控本地修复并重跑本地验证；只有触及架构边界、安全边界、
+  网络边界、发布边界或 Git 范围时，才复用原审计会话或进入下一轮批量审计。
+- 已经有 `collect-release-evidence.sh`、`check-release-scope.sh`、
+  `check-edition-boundary.sh`、`check-public-runtime-boundary.sh` 等机器门禁时，
+  不得新建 subagent 重复做同一层面的机械检查；机器结果应作为上下文发给
+  已有会话，subagent 只做语义复核、例外判断和跨边界取舍。
+
+调用预算：
+
+- 普通小改动：主控本地验证即可；若已有相关活跃会话，复用该会话回传摘要，
+  不为小改动单独新建 subagent。
+- 单一低风险功能包：复用已有相关实现/架构 agent；如无可复用会话，最多新建
+  1 个相关实现/架构 agent + 1 个必要审计 agent，并在该 milestone 内持续复用。
+- 触及安全或发布边界的功能包：最多 3 个 agent：
+  `architecture_agent`、`security_audit_agent`、`git_audit_agent`；优先复用
+  已有会话，无法复用时才按角色各新建一次。
+- 触及 LAN、Compose 网络、端口、DHCP/ProxyDHCP/TFTP、路由、防火墙时：
+  必须包含 `network_safety_agent`，但仍应与其他审计合并为一次审计包。
+- `research_agent` 仅在外部事实不确定时启动；不得用于本地代码中已可验证的问题。
+- `project_decision_agent` 仅在版本边界、收费边界、阶段方向或重大取舍需要决策时启动。
+
+禁止行为：
+
+- 禁止每改一个文件就新开一组三个审计 agent。
+- 禁止在已有固定会话池可用时，为同一职责另开新窗口。
+- 禁止在 spawn 工具返回子模型解析错误或 registry 异常时反复重试创建大量
+  agent；最多记录一次失败并暂停该类 agent 调用。
+- 禁止为了重复确认已经由脚本证明的事实而新开 subagent；应把脚本输出摘要
+  发给已有会话或纳入下一次批量审计包。
+- 禁止在同一 milestone 内关闭 agent 后，因为小修复又立即新开同角色 agent；
+  应保持原会话继续复用，或等到下一次批量审计。
+- 禁止把“收到非阻断建议”自动升级为新一轮完整 subagent 审计。
+- 禁止在未检查可复用会话的情况下继续启动新 subagent；当用户指出 token 浪费后，
+  新建会话前必须先说明为什么已有会话不能复用。
+
+新的执行节奏：
+
+```text
+主控本地实现一批相关改动
+  → 主控运行机器门禁和验证命令
+  → 若只是普通小修，直接记录结果；已有相关会话则批量回传摘要
+  → 若触及边界，汇总为一个审计包
+  → 每个必要角色优先复用固定会话池；无可用会话且工具层正常才新建一次
+  → BLOCKED 才修复并回传同一会话
+  → PASS 后保留会话到该 milestone 收口，避免小修后重复新建
+```
 
 ### 23.1 总体编排
 
@@ -2250,7 +2549,7 @@ branch: codex/synaboot-phase1
   → boot_entry_agent / storage_agent / webui_agent / image_factory_agent 分工实现
   → tutorial_docs_agent 固化说明、图例、回滚和验证步骤
   → security_audit_agent 审查安全风险
-  → git_audit_agent 审查 diff、创建本地 commit、自动 push 当前分支
+  → git_audit_agent 审查 diff、创建本地 commit、经用户二次确认后 push 当前分支
 ```
 
 ### 23.2 通信机制
@@ -2266,6 +2565,8 @@ subagents 之间不直接修改彼此输出。
 - `git diff`：阶段收口时的真实变更边界。
 - 审查结论：`APPROVED`、`BLOCKED`、`REQUIRES_DECISION`。
 - 决策结论：`APPROVED`、`APPROVED_WITH_CONDITIONS`、`BLOCKED`、`NEEDS_RESEARCH`。
+- 用户本地镜像事实：`data/images` 下的 ISO/WIM/ESD/镜像文件只作为运行数据和验收输入，
+  不作为 Git 提交内容。
 
 当某个 agent 遇到外部事实不确定时：
 
@@ -2304,10 +2605,23 @@ subagents 之间不直接修改彼此输出。
 实现完成
   → 运行验证命令
   → security_audit_agent / network_safety_agent 按风险复审
-  → git_audit_agent 审查 diff、敏感信息和验证记录
+  → git_audit_agent 审查 diff、敏感信息、真实镜像排除状态和验证记录
   → project_decision_agent 确认阶段方向和推送范围
   → 创建本地 commit
-  → 自动 push 当前 GitHub 分支
+  → 经用户二次确认后 push 当前 GitHub 分支
+```
+
+当用户已经放入 ISO，但启动所需文件尚未提取时：
+
+```text
+用户放入 ISO
+  → storage_agent 扫描并记录 source ISO 元数据
+  → architecture_agent 确认 ISO 与派生启动文件的数据模型
+  → image_factory_agent 设计幂等准备任务
+  → boot_entry_agent 仅为已满足依赖的条目生成菜单
+  → webui_agent 展示准备状态、缺失文件和下一步动作
+  → security_audit_agent 审查提取路径、覆盖行为和命令风险
+  → git_audit_agent 确认真实 ISO 与生成产物不会被提交
 ```
 
 ### 23.3 每个 Subagent 是否在工作流中工作
@@ -2333,3 +2647,1290 @@ subagents 之间不直接修改彼此输出。
 - `project_decision_agent` 只在方向性、阶段性、冲突性、取舍性问题上触发。
 - 涉及网络启动、Compose、脚本、端口、路由器参数、安全边界时，`research_agent`、`network_safety_agent`、`security_audit_agent`、`git_audit_agent` 必须参与。
 - 普通 UI 或文档小修可以只经过相关实现 agent、必要审计 agent 和 `git_audit_agent`。
+
+### 23.4 Subagent 超量调用复盘
+
+本轮问题：
+
+- 用户期望是启用 11 个项目角色，并按 PLAN 执行开发。
+- 实际执行中，主控在每个小型发布护栏补丁后都重新启动
+  `architecture_agent`、`security_audit_agent`、`git_audit_agent`，
+  导致累计创建了远超 11 个的 subagent 会话。
+- 这些会话大多审查的是同一类事实：
+  - 免费发布线没有商业实现。
+  - 没有 license/payment/activation 运行时入口。
+  - `.env`、ISO、SQLite、混淆产物没有进入 Git。
+  - 预检脚本只读且不生成 `__pycache__`。
+- 这些事实已经逐步被机器门禁覆盖，后续不应继续用大量 subagent 重复确认。
+
+具体根因：
+
+1. 将“角色数量”误当成“可无限创建会话”。
+2. 缺少每个 milestone 的 subagent 调用预算。
+3. 对非阻断建议采用了“修一次、审一次”的低效循环。
+4. 没有充分复用已有会话的 `send_input` 能力。
+5. 没有把多项小修复合并成一个审计包。
+
+已采取的解决措施：
+
+- 在 23.0 中新增 subagent 调用成本与会话治理规则。
+- 将发布线事实尽量沉淀到机器门禁：
+  - `check-release-scope.sh`
+  - `check-private-commercial-scope.sh`
+  - `check-edition-boundary.sh`
+  - `check-public-runtime-boundary.sh`
+  - `check-token-disclosure.sh`
+  - `collect-release-evidence.sh`
+- 后续同一 milestone 内，同一角色优先复用同一个会话。
+- 后续小型修复默认先跑本地验证；若已有相关活跃会话，则回传摘要继续复用，
+  若没有活跃会话，不为小修单独新建。
+- 后续只有在机器门禁无法判断语义、出现 BLOCKED、触及 LAN/安全/发布边界，
+  或用户明确要求时，才复用或启动必要 subagent。
+
+后续执行口径：
+
+```text
+能由脚本验证的事实 → 主控先跑脚本，再把结果发给已有 agent 或纳入审计包
+普通小修 → 主控处理；已有相关会话则复用回传，无会话则不单独新建
+同类小修累计 → 合并成一次审计包，发给已有会话
+需要语义判断 → 复用对应 agent；无可复用会话才新建一次
+需要安全/Git 收口 → 复用 security_audit_agent + git_audit_agent；无会话才各建一次
+需要网络判断 → 才额外复用或启动 network_safety_agent
+```
+
+---
+
+## 24. 下一步开发规划：ISO-first 验收闭环与 Phase 3.3 受控评估
+
+更新时间：`2026-06-13`
+
+### 24.1 当前新增事实
+
+用户已经在以下目录放入对应 ISO：
+
+```text
+data/images/pe/hotpe/HotPE-V2.8.251018.iso
+data/images/windows/win11/Win11_24H2_Pro_Chinese_Simplified_x64.iso
+data/images/linux/ubuntu-22.04.3/ubuntu-22.04.3-desktop-amd64.iso
+data/images/linux/ubuntu-24.04/ubuntu-24.04.3-desktop-amd64.iso
+```
+
+这些 ISO 是本地运行数据，不进入 Git，不上传第三方服务，不由 SynaBoot
+删除或覆盖。
+
+当前平台已有镜像扫描和菜单生成框架，但 raw ISO 与可启动条目之间仍有缺口：
+
+- HotPE ISO 不能直接等价于 `wimboot` 启动目录，需要准备出
+  `wimboot`、`bootmgr`、`BCD`、`boot.sdi`、`boot.wim`。
+- Ubuntu ISO 不能单独成为 iPXE Linux 启动项，需要同目录具备
+  `casper/vmlinuz` 和 `casper/initrd`。
+- Windows 11 ISO 保持 HotPE 辅助安装模式，不生成通用 iPXE 直接启动项。
+- Ubuntu 24.04 也应纳入 Linux 镜像识别和准备流程，不能只写死
+  Ubuntu 22.04.3。
+
+### 24.2 下一阶段根本目标
+
+下一阶段先完成 Phase 2 的真实镜像闭环：
+
+```text
+用户只负责把 ISO 放到 data/images
+  → SynaBoot 扫描 ISO
+  → SynaBoot 判断缺失的启动依赖
+  → SynaBoot 生成安全、幂等的准备任务
+  → 准备完成后自动生成 menu.ipxe
+  → 用户通过 iPXE USB/ISO/EFI 或手动 HTTP Boot 进入菜单
+```
+
+Phase 3 的 `UEFI: PXE IPv4` 自动入口继续保持门禁状态。当前只允许进行
+受控 ProxyDHCP/TFTP 可行性评估文档和隔离实验方案设计，不允许在生产 LAN
+实现、启用或测试。
+
+### 24.3 Phase 2.8：当前变更与本地镜像保护收口
+
+参与 agent：
+
+- `storage_agent`
+- `security_audit_agent`
+- `git_audit_agent`
+
+目标：
+
+- 保护用户已放入的 ISO，避免误提交。
+- 收口当前计划、审查和门禁脚本变更。
+- 确认 Phase 3 仍为只读 blocked。
+
+必须实现：
+
+- `.gitignore` 忽略 `data/images/**` 下的真实镜像，仅保留 README 和
+  `.gitkeep`。
+- `git_audit_agent` 明确禁止提交 ISO/WIM/ESD/IMG/VHD/VHDX/QCOW2 等镜像文件。
+- `security_audit_agent` 审查 ISO 准备任务不得路径穿越、不得覆盖用户原始 ISO。
+
+验收：
+
+```bash
+git status --short
+python3 scripts/preflight/check-phase3-gates.py
+bash scripts/preflight/check-network-safety.sh
+bash scripts/preflight/check-compose-config-safe.sh
+git diff --check
+```
+
+验收标准：
+
+- 真实 ISO 不出现在可提交文件列表中。
+- Phase 3 门禁仍为 readonly + blocked。
+- 没有 DHCP、ProxyDHCP、TFTP、UDP `67/68/69/4011`、host network 或
+  privileged 变更。
+
+### 24.4 Phase 2.9：ISO 扫描语义增强
+
+参与 agent：
+
+- `architecture_agent`
+- `storage_agent`
+- `boot_entry_agent`
+- `webui_agent`
+- `security_audit_agent`
+
+目标：
+
+- 将 raw ISO 明确建模为 source media。
+- 区分“已扫描到 ISO”和“可进入 iPXE 菜单”的状态。
+- 避免把不可直接启动的 ISO 误展示为可启动。
+
+必须实现：
+
+- 为 ISO 增加准备状态，例如：
+  - `source_only`
+  - `needs_extraction`
+  - `prepared`
+  - `unsupported_direct_boot`
+- HotPE ISO 被识别为 `needs_extraction`，直到依赖文件齐全才生成 HotPE
+  wimboot 菜单项。
+- Ubuntu 22.04.3 和 Ubuntu 24.04 ISO 被识别为 Linux source ISO；
+  缺少 `casper/vmlinuz` 或 `casper/initrd` 时标记为 `incomplete` 或
+  `needs_extraction`。
+- Windows 11 ISO 标记为 `needs_hotpe`，只在 HotPE ready 后生成
+  Windows via HotPE 菜单说明入口。
+- Web UI 展示缺失依赖，而不是只给出笼统 `incomplete`。
+
+验收：
+
+```bash
+curl http://localhost:18080/api/images
+curl http://localhost:18080/boot/menu.ipxe
+```
+
+验收标准：
+
+- 4 个 ISO 均可被扫描并显示。
+- Raw ISO 不会被误加入可直接启动菜单。
+- UI 能说明每个 ISO 下一步需要准备什么。
+
+当前实现记录：
+
+- API 已新增并返回：
+  - `source_role`
+  - `preparation_status`
+  - `missing_artifacts`
+  - `next_action`
+  - `readiness_detail`
+- HotPE raw ISO 标记为 `source_iso` + `needs_extraction`，缺失依赖明确为
+  `wimboot`、`bootmgr`、`BCD`、`boot.sdi`、`boot.wim`。
+- Ubuntu/Linux raw ISO 标记为 `source_iso` + `needs_extraction`，缺失依赖明确为
+  `casper/vmlinuz` 和 `casper/initrd`。
+- Windows ISO 标记为 `windows_source_iso` + `uses_hotpe`，不生成通用直接启动项。
+- Web UI 镜像表和详情页已展示准备状态、缺失依赖、准备说明和下一步动作。
+- 临时数据目录 smoke test 已覆盖 HotPE ISO、Windows ISO、Ubuntu ISO，确认 raw ISO
+  不会误进入 `menu.ipxe` 启动菜单。
+
+### 24.5 Phase 2.10：ISO 准备任务框架
+
+参与 agent：
+
+- `architecture_agent`
+- `image_factory_agent`
+- `storage_agent`
+- `boot_entry_agent`
+- `security_audit_agent`
+
+目标：
+
+- 让用户只放 ISO，其余由 SynaBoot 生成可审查、可重复执行的准备任务。
+- 先实现任务框架和本地工具探测，不强行引入新依赖。
+
+必须实现：
+
+- 新增或扩展 Image Factory 任务类型：
+  - `hotpe-iso-prepare`
+  - `ubuntu-iso-extract-kernel-initrd`
+- 任务必须幂等：
+  - 原始 ISO 只读。
+  - 输出只写入对应 `data/images/...` 子目录或 `data/builds/<job-id>/`。
+  - 已存在文件不静默覆盖，必须记录状态或要求管理员确认。
+- Ubuntu 准备任务提取：
+
+```text
+casper/vmlinuz
+casper/initrd
+```
+
+- HotPE 准备任务目标输出：
+
+```text
+wimboot
+bootmgr
+BCD
+boot.sdi
+boot.wim
+```
+
+- 若宿主或容器缺少可用 ISO 解包工具，只生成任务说明和缺失工具提示，
+  不自动安装新第三方依赖。
+
+禁止：
+
+- 不得 mount 宿主系统敏感目录。
+- 不得使用 `privileged` 容器。
+- 不得删除或改写用户 ISO。
+- 不得执行磁盘分区、格式化、写真实块设备。
+
+验收：
+
+```bash
+curl http://localhost:18080/api/jobs
+curl http://localhost:18080/api/images
+curl http://localhost:18080/boot/menu.ipxe
+```
+
+验收标准：
+
+- Ubuntu 准备完成后，对应 Ubuntu 菜单项进入 `ready`。
+- HotPE 依赖齐全后，HotPE 菜单项进入 `ready`。
+- Windows via HotPE 只有在 HotPE ready 且 Windows ISO 存在时显示。
+
+当前实现记录：
+
+- API 已支持任务类型：
+  - `hotpe-iso-prepare`
+  - `ubuntu-iso-extract-kernel-initrd`
+- Web UI 镜像详情页会在 raw HotPE/Ubuntu ISO `needs_extraction` 时显示
+  “创建准备任务”按钮。
+- 新任务创建时必须传入 `source_image_id`，后端会校验：
+  - HotPE 准备任务只能绑定 `pe/hotpe/*.iso`。
+  - Ubuntu/Linux 提取任务只能绑定 `linux/**/*.iso`。
+  - 源文件必须仍为 `present`。
+- 任务包写入 `data/builds/<job-id>/package/...`，包含：
+  - `manifest.json`
+  - `README.md`
+  - `prepare.sh`
+- `manifest.json` 明确记录：
+  - 原始 ISO 只读。
+  - 不覆盖已有目标文件。
+  - 不写项目数据目录之外。
+  - 不安装新依赖。
+  - 不执行破坏性磁盘操作。
+- `manifest.json` 已新增本机工具探测摘要，记录 `bsdtar` 与 `7z` 当前是否可用；
+  该探测只读，不自动安装依赖。
+- Ubuntu/Linux `prepare.sh` 优先使用本机已有 `bsdtar` 或 `7z` 提取
+  `casper/vmlinuz` 和 `casper/initrd`；若没有外部工具，可使用项目内
+  `extract-iso9660-file.py` 只读提取器作为 fallback。
+- Ubuntu/Linux `prepare.sh` 已在复制前校验解包结果必须存在、必须是普通文件、
+  不得是 symlink，避免异常 ISO 通过 symlink 暴露宿主敏感文件。
+- 本轮新增 `scripts/image-factory/prepare-linux-boot-artifacts.sh`，用于管理员
+  已放置 Linux ISO 后批量准备 `casper/vmlinuz` 与 `casper/initrd`；脚本只处理
+  `data/images/linux/**/*.iso`，优先使用本机已有 `bsdtar` 或 `7z`，缺失时
+  使用项目内 stdlib ISO9660 提取器；不安装依赖、不挂载 ISO、不覆盖已有文件、
+  不写项目外路径、不处理 Windows/HotPE。
+- 本机当前未发现 `bsdtar`、`7z`、`xorriso` 或 `isoinfo`，但项目内
+  `extract-iso9660-file.py` 已成功从 Ubuntu 22.04.3/24.04 ISO 提取
+  `casper/vmlinuz` 与 `casper/initrd`；真实 ISO smoke 当前显示
+  `image_count=8`、`iso_count=4`、`ready_count=6`，PXE readiness 显示
+  `ready_menu_entry_count=6`。
+- 本轮 Git 审计指出脚本必须防止父路径 symlink 导致写入项目外。已补强：
+  - 拒绝 `data/images`、`data/images/linux`、`data/builds`、`WORK_ROOT`
+    任一父路径为 symlink。
+  - 对 `WORK_ROOT` 和每个 hash work 目录做 canonical 校验。
+  - 在 `rm -rf` 工作目录前确认路径非空、非 `/`、非 symlink，且仍位于
+    `data/builds/linux-boot-artifacts` 下。
+- 本轮 symlink 边界 smoke test 已覆盖：
+  - `data/images` 为 symlink 时 BLOCKED。
+  - `data/builds` 为 symlink 时 BLOCKED。
+  - `data/builds/linux-boot-artifacts/<hash>` 为 symlink 时 BLOCKED。
+- 本轮安全审计指出 ISO 提取器必须限制异常 ISO 的资源消耗。已补强：
+  - `extract-iso9660-file.py` 限制只允许提取 `vmlinuz` 与 `initrd`。
+  - 校验 `extent * 2048 + size` 不得超过 ISO 文件大小。
+  - 对 `vmlinuz` 与 `initrd` 设置最大文件大小。
+  - 使用 `os.O_EXCL` 不覆盖写入，并改为分块流式复制。
+  - 写入失败时只清理本次创建的目标文件。
+- 本轮新增 `scripts/preflight/check-iso-extractor-safety.sh`，并已接入
+  `collect-release-evidence.sh`，用于固化 ISO 提取器和 Linux 准备脚本的
+  安全不变量。
+- HotPE `prepare.sh` 当前默认 fail-fast，只生成清单和人工确认说明，避免因
+  HotPE ISO 内部布局差异误提取错误文件。
+- `/api/jobs` 和任务详情页已展示任务包状态、源 ISO、目标输出、manifest
+  路径、准备脚本路径、安全边界和本机工具探测结果，管理员不用进入容器
+  或目录树即可先完成只读审查。
+- 临时数据目录 smoke test 已覆盖 HotPE 与 Ubuntu 准备任务创建，确认任务包、
+  manifest 和脚本生成位置符合边界。
+
+### 24.6 Phase 2.11：真实启动前本地 smoke test
+
+参与 agent：
+
+- `boot_entry_agent`
+- `webui_agent`
+- `tutorial_docs_agent`
+- `security_audit_agent`
+- `git_audit_agent`
+
+目标：
+
+- 在不改 LAN 的前提下，完成服务级和菜单级验证。
+
+验证命令：
+
+```bash
+bash scripts/preflight/check-network-safety.sh
+bash scripts/preflight/check-compose-config-safe.sh
+bash scripts/preflight/check-real-iso-smoke.sh
+```
+
+验收标准：
+
+- Web UI 展示 4 个 ISO 的状态。
+- `menu.ipxe` 只包含已准备完成的启动项。
+- Windows 11 仍通过 HotPE 辅助安装。
+- 验证后执行 `docker compose down`。
+
+当前验证记录：
+
+- 已运行：
+
+```bash
+bash scripts/preflight/check-network-safety.sh
+bash scripts/preflight/check-release-scope.sh
+bash scripts/preflight/check-compose-config-safe.sh
+docker compose up -d --build
+curl http://localhost:18080/
+curl http://localhost:18080/images/
+curl http://localhost:18080/api/network-safety
+curl http://localhost:18080/api/boot-entry
+curl http://localhost:18080/api/images
+curl http://localhost:18080/boot/menu.ipxe
+docker compose down
+```
+
+说明：本轮验证使用本机 `.env` 中已配置的管理员 token；验证记录不得在
+命令行或文档中展示 token 值。
+
+- 由于首轮真实 ISO 扫描会计算大文件 SHA256，通过 Nginx `POST /api/scan`
+  触发时命中默认上游超时；已改用同一 Compose API 容器内直接调用
+  `scan_images()` 完成验证。
+- 4 个真实 ISO 均已被扫描并通过 HTTP API 展示：
+  - Ubuntu 22.04.3 ISO：`source_iso` + `needs_extraction`。
+  - Ubuntu 24.04 ISO：`source_iso` + `needs_extraction`。
+  - HotPE ISO：`source_iso` + `needs_extraction`。
+  - Windows 11 ISO：`windows_source_iso` + `uses_hotpe`。
+- 当前 `menu.ipxe` 没有把 raw ISO 误加入可直接启动项，只保留工具入口。
+- 验证后已执行 `docker compose down`，`18080/tcp` 已释放。
+- 本轮验证未在文档或命令记录中保留管理员 token 值。
+- 已新增 `scripts/preflight/check-real-iso-smoke.sh`，将以上服务级验证固化为
+  显式 smoke test：
+  - 先确认 4 个真实 ISO 存在且被 Git 忽略。
+  - 先运行网络安全和安全 Compose 配置检查。
+  - 启动 Compose 后在 API 容器内直接调用 `scan_images()`，避免首轮大文件
+    SHA256 通过 Nginx 触发上游超时。
+  - 检查 Web UI、`/api/images`、`/boot/menu.ipxe` 和 `/images/`。
+  - 确认 raw ISO 名称不会出现在 `menu.ipxe` 启动项中。
+  - 默认执行 `docker compose down`；如需保留服务，可设置
+    `SYNABOOT_SMOKE_KEEP_RUNNING=1`。
+- 本轮已实际运行更新后的 `bash scripts/preflight/check-real-iso-smoke.sh` 并通过：
+  - 4 个真实 ISO 均存在且被 Git 忽略。
+  - Compose 构建、启动、容器内扫描、Web/API/menu/images 检查均通过。
+  - 扫描结果为 `image_count=8`、`iso_count=4`、`ready_count=6`，符合
+    Ubuntu 22.04.3/24.04 启动依赖已准备完成的当前阶段预期。
+  - `menu.ipxe` 未包含 HotPE、Windows 11 raw ISO 文件名；已准备的
+    Ubuntu 22.04.3/24.04 ISO URL 允许进入 Linux 启动项。
+  - 脚本结束后已执行 `docker compose down`。
+
+### 24.7 Phase 3.3-A：受控 ProxyDHCP 可行性评估继续保持文档阶段
+
+参与 agent：
+
+- `research_agent`
+- `network_safety_agent`
+- `security_audit_agent`
+- `project_decision_agent`
+- `boot_entry_agent`
+- `tutorial_docs_agent`
+
+目标：
+
+- 为最终 `UEFI: PXE IPv4 -> SynaBoot 菜单` 做证据准备。
+- 继续保持生产 LAN 零变更。
+
+当前允许：
+
+- 文档化 ProxyDHCP metadata-only 方案。
+- 设计隔离实验输入、输出和报文字段判读标准。
+- 明确 TFTP loader 白名单、回滚证据和审查模板。
+
+当前禁止：
+
+- 不得实现 ProxyDHCP/TFTP 服务。
+- 不得开放 UDP `67/68/69/4011`。
+- 不得在生产 LAN 抓包测试或启服务。
+- 不得修改 TL-ER6120T、OpenWrt、交换机、AP、VLAN、DNS、路由、防火墙。
+
+进入 Phase 3.3-B 的前置条件：
+
+- 用户确认可用隔离测试网络或单机实验环境。
+- `network_safety_agent` 和 `security_audit_agent` 输出允许隔离验证的结论。
+- `project_decision_agent` 明确批准从文档阶段进入隔离验证阶段。
+
+### 24.8 当前 Subagents 职责校对结论
+
+当前 11 个 subagents 总体保留，但职责边界做如下校正：
+
+- `research_agent`：继续负责外部事实，不参与本地 ISO 解包实现；Phase 3
+  网络启动疑问仍先走它。
+- `project_decision_agent`：只处理方向取舍，例如是否引入新解包依赖、是否进入
+  Phase 3 隔离实验；普通 ISO 扫描实现不需要它频繁介入。
+- `network_safety_agent`：继续只读审查 LAN 风险；ISO 准备本身不触发网络审查，
+  除非修改 Compose、端口、HTTP 暴露或启动入口网络能力。
+- `architecture_agent`：负责 raw ISO、派生启动文件、任务状态和菜单生成之间的
+  数据模型。
+- `storage_agent`：负责扫描用户 ISO、SHA256、准备状态、缺失依赖提示；
+  不删除、不覆盖用户 ISO。
+- `image_factory_agent`：负责 HotPE/Ubuntu ISO 准备任务框架；不得执行破坏性磁盘操作。
+- `boot_entry_agent`：只为准备完成的 HotPE/Ubuntu 生成菜单；Windows 继续走
+  HotPE 辅助安装。
+- `webui_agent`：展示 ISO 准备状态、缺失文件、任务入口和菜单预览；不得暗示 raw ISO
+  可直接启动。
+- `tutorial_docs_agent`：同步用户放 ISO、平台准备、菜单生成、iPXE 启动的教程。
+- `security_audit_agent`：重点审查 ISO 解包路径穿越、命令注入、覆盖用户文件、
+  镜像误提交和日志泄密。
+- `git_audit_agent`：阶段收口前必须确认真实 ISO、生成数据库、日志、构建产物未被
+  stage 或 push。
+
+### 24.9 通信协作机制修正
+
+原机制中“阶段完成后自动 push”的表述容易忽略本地镜像文件风险。修正后：
+
+- 实现 agent 只修改代码、脚本、文档和配置。
+- 用户放入的 ISO 只作为本地运行输入。
+- `storage_agent` 可以读取并扫描 ISO，但不得把 ISO 纳入仓库变更。
+- `image_factory_agent` 生成的派生文件默认属于运行产物，不进入 Git。
+- `git_audit_agent` 必须在 commit/push 前检查：
+  - 是否 stage 了 ISO/WIM/ESD/IMG/VHD/VHDX/QCOW2。
+  - 是否 stage 了 SQLite 数据库、日志、构建产物。
+  - 是否存在 `.env`、token、密码、私钥。
+  - 是否存在未经审查的网络相关变更。
+- 若发现真实镜像或敏感文件进入 Git 范围，必须 `BLOCKED`，先移出暂存或更新
+  `.gitignore`。
+
+---
+
+## 25. 产品化路线：对标 iVentoy 后的免费版与商业版规划
+
+更新时间：`2026-06-13`
+
+### 25.1 iVentoy 公开文档学习结论
+
+参考资料：
+
+- iVentoy 自动安装文档：
+  `https://www.iventoy.com/cn/doc_autoinstall.html`
+- iVentoy 版本说明：
+  `https://www.iventoy.com/cn/doc_edition.html`
+- iVentoy 使用说明：
+  `https://www.iventoy.com/cn/doc_start.html`
+- iVentoy 操作系统全自动安装说明：
+  `https://www.iventoy.com/cn/doc_unattend_install.html`
+- iVentoy 文件注入说明：
+  `https://www.iventoy.com/cn/doc_injection.html`
+
+对 SynaBoot 有价值的设计点：
+
+- 用户只放 ISO，平台负责展示、选择和启动。
+- 自动安装脚本不必重制 ISO，可以为 ISO 绑定一个或多个脚本。
+- 多个自动安装脚本可在启动时选择。
+- 自动安装脚本支持变量扩展，但源文件不被修改，只在副本中展开。
+- 全自动安装由默认镜像、菜单超时、默认脚本和脚本选择超时组合实现。
+- 文件注入是独立框架，平台只负责注入机制，具体驱动/脚本内容由管理员维护。
+- 免费版与专业版差异较少，基础能力仍可用；商业版主要覆盖商用权、规模和高级能力。
+
+需要避开的设计点：
+
+- 不照搬 iVentoy 的 DHCP/PXE 启动方式。SynaBoot 当前生产 LAN 有既有
+  TP-Link DHCP 和 OpenWrt 网关，Phase 1/2 必须继续零侵入。
+- 不要求用户手动理解过多底层启动文件。用户只放 ISO，平台应给出准备状态、
+  一键准备任务和清晰错误提示。
+- 不把基础装机能力做成收费门槛。
+- 不允许自动安装模板默认包含破坏性磁盘分区配置。
+
+### 25.2 SynaBoot 的产品目标
+
+SynaBoot 要做得比 iVentoy 更适合本项目场景：
+
+- 对使用者友好：
+  - 开机进入菜单后能清楚看到可安装系统。
+  - Windows 通过 HotPE 路径说明清晰。
+  - Linux 启动项只在准备完成后出现，避免失败菜单。
+  - 自动安装必须明确标注是否会清盘、分区、覆盖数据。
+
+- 对管理员友好：
+  - Docker Compose 一键部署。
+  - `.env` 一键生成和检查。
+  - `data/images` 放 ISO 后自动扫描。
+  - Web UI 展示缺失依赖和准备按钮。
+  - 一键生成/刷新 `menu.ipxe`。
+  - 一键导出诊断包，但不得包含 token、ISO、私钥或敏感镜像内容。
+  - 所有网络启动高级能力默认关闭，并有门禁状态。
+
+- 对企业运维友好：
+  - 支持镜像目录分类、标签、版本、架构、用途说明。
+  - 支持自动安装脚本模板库和变量预览。
+  - 支持任务日志、审计记录、回滚清单。
+  - 支持后续授权模型，但本地基础部署不依赖公网。
+
+### 25.3 免费版原则
+
+免费版必须覆盖完整基础装机闭环：
+
+- Docker Compose 部署。
+- HTTP 镜像仓库。
+- 本地 ISO 扫描。
+- HotPE ISO 准备指引或本地准备任务。
+- Ubuntu/Linux ISO kernel/initrd 准备指引或本地准备任务。
+- Windows ISO 通过 HotPE 辅助安装。
+- iPXE HTTP 菜单生成。
+- 手动 iPXE USB/ISO/EFI 启动。
+- 手动 UEFI HTTP Boot。
+- Web UI 基础镜像管理。
+- 基础 Image Factory 模板：
+  - Ubuntu autoinstall 模板。
+  - Windows ADK/DISM 外部任务包模板。
+- 网络安全 preflight。
+- Phase 3 只读启动入口状态展示。
+- 基础文档、部署教程和故障排查。
+
+免费版不得设置以下限制：
+
+- 不限制基础镜像数量。
+- 不限制基础菜单生成次数。
+- 不限制手动 iPXE/HTTP Boot 使用。
+- 不限制基础离线部署。
+- 不因未联网激活而破坏基础功能。
+
+### 25.4 商业版候选能力
+
+商业版只覆盖高级效率、规模、治理和支持能力。
+
+候选能力按优先级分层：
+
+1. Professional 一次性买断或小团队订阅：
+   - 自动安装脚本库管理。
+   - 为单个 ISO 绑定多个自动安装方案。
+   - 自动安装变量扩展预览。
+   - 默认镜像、默认脚本、菜单超时、脚本选择超时策略。
+   - 批量镜像标签、版本、生命周期管理。
+   - 一键诊断包导出。
+   - 更友好的 ISO 准备向导。
+
+2. Enterprise 订阅：
+   - 多管理员账号和角色权限。
+   - 审计日志和操作追踪。
+   - 多站点/多 SynaBoot 节点管理。
+   - 镜像同步、校验、保留策略。
+   - LDAP/OIDC/企业身份集成。
+   - 高级报表：装机次数、成功率、机型、失败原因。
+   - 商业支持、升级策略和长期维护。
+
+3. Usage-based 或按次收费候选：
+   - 大规模批量无人值守装机任务。
+   - 企业级驱动包/脚本注入流水线。
+   - 自动生成定制镜像任务。
+   - 远程协助诊断或专家模板生成。
+
+4. 不建议收费的能力：
+   - 基础 ISO 扫描。
+   - 基础菜单生成。
+   - 基础手动启动。
+   - HotPE 访问 Windows 镜像。
+   - Ubuntu/Linux 基础启动准备。
+   - 网络安全 preflight。
+
+### 25.5 自动安装与文件注入路线
+
+SynaBoot 后续应借鉴“绑定脚本而不重制 ISO”的思路，但必须更安全：
+
+- 自动安装脚本作为独立资源管理：
+  - Windows：`Autounattend.xml` / `unattend.xml`。
+  - Ubuntu 20.04+：cloud-init `user-data` / `meta-data`。
+  - Debian：preseed。
+  - RHEL/CentOS/Rocky/Alma：Kickstart。
+  - SUSE/openSUSE：AutoYaST。
+
+- 一个 ISO 可绑定多个安装配置：
+  - 手动选择。
+  - 默认配置。
+  - 超时自动选择。
+  - 按 MAC、机型、标签匹配的策略留到商业版候选。
+
+- 变量扩展必须安全：
+  - 只支持白名单变量。
+  - 在副本中展开，不修改源模板。
+  - 展开前显示预览。
+  - 涉及磁盘变量时强制高危提示。
+  - 不记录密码、token、私钥。
+
+- 文件注入必须安全：
+  - 作为后续高级能力设计。
+  - 注入包必须有清单、大小限制、hash 校验。
+  - 解包必须防路径穿越和 symlink 越界。
+  - 不默认执行注入脚本，除非管理员明确确认。
+
+### 25.6 一键配置与部署目标
+
+后续应新增一键部署体验，但不得绕过安全检查。
+
+目标命令：
+
+```bash
+bash scripts/bootstrap-synaboot.sh
+```
+
+目标能力：
+
+- 检查 Ubuntu 版本、Docker、Docker Compose。
+- 生成 `.env`，提示管理员确认 `SERVER_IP`、HTTP 端口和 admin token。
+- 初始化目录。
+- 运行网络安全 preflight。
+- 运行 `bash scripts/preflight/check-compose-config-safe.sh`。
+- 可选启动 `docker compose up -d`。
+- 输出 Web UI、镜像仓库和 iPXE 菜单 URL。
+
+禁止：
+
+- 不自动安装或启用 DHCP/ProxyDHCP/TFTP。
+- 不修改防火墙、路由、DNS、网关。
+- 不启用 host network 或 privileged。
+- 不上传 ISO 到公网。
+
+当前实现记录：
+
+- 已新增：
+
+```bash
+bash scripts/bootstrap-synaboot.sh
+```
+
+- 支持参数：
+  - `--server-ip <IP>`
+  - `--http-bind <BIND>`
+  - `--http-port <PORT>`
+  - `--force-env`
+  - `--start`
+- 默认行为：
+  - 生成或保留 `.env`。
+  - 初始化项目数据目录。
+  - 运行 `check-release-scope.sh`。
+  - 运行 `check-private-commercial-scope.sh`。
+  - 运行 `check-edition-boundary.sh`。
+  - 运行 `check-public-runtime-boundary.sh`。
+  - 运行 `check-autoinstall-boundary.sh`。
+  - 运行 `check-subagent-governance.sh`。
+  - 运行 `check-network-safety.sh`。
+  - 运行 `bash scripts/preflight/check-compose-config-safe.sh`，不保存可能展开 token 的配置文件。
+  - 不启动服务，除非显式传入 `--start`。
+- 安全边界：
+  - 不安装 Docker 或系统包。
+  - 不修改现有网络设备、地址分配、解析、转发或安全策略。
+  - 不启用任何自动网络启动服务或文件共享服务。
+  - 不使用 host network 或 privileged。
+- 本轮验证：
+
+```bash
+bash -n scripts/bootstrap-synaboot.sh
+bash scripts/bootstrap-synaboot.sh --help
+bash scripts/bootstrap-synaboot.sh --http-port nope
+bash scripts/bootstrap-synaboot.sh --server-ip 192.168.1.168 --http-bind 18080 --http-port 18080
+```
+
+- `--http-port nope` 已按预期 `BLOCKED`。
+- 默认 bootstrap 已通过发布范围预检、网络安全预检和 `bash scripts/preflight/check-compose-config-safe.sh`，
+  且未启动服务。
+- Web UI 新增只读部署状态：
+  - API：
+
+```text
+GET /api/deployment-status
+```
+
+  - 展示数据目录、镜像目录、boot 目录、metadata/builds/logs 目录是否存在。
+  - 展示免费版 manifest 与公开版本 catalog 是否存在；二者属于信息文件状态，
+    API 仍有内置默认值，不作为服务启动硬门槛。
+  - 只返回 `admin_configured` 布尔值，不读取或返回 `.env` 内容和
+    `SYNABOOT_ADMIN_TOKEN`。
+  - 不运行 Docker、网络、路由、防火墙或系统修改命令。
+  - 不启用 DHCP、ProxyDHCP、TFTP、Samba、host network 或 privileged。
+- 管理员教程 `docs/ADMIN_GUIDE.md` 已同步：
+  - 推荐使用 `scripts/bootstrap-synaboot.sh`。
+  - 发布前只读检查包含 release/private-commercial/network safety。
+  - Web UI“网络安全”页说明部署就绪只读看板。
+  - 自动安装只作为草稿、预览和只读绑定规划。
+  - 免费发布线与私有商业流程只作为文档入口，不写敏感提交或商业实现教程。
+  - 删除 shell 命令中直接携带管理员 token 的示例。
+
+### 25.7 版本与商业化决策机制
+
+`project_decision_agent` 扩展为产品版本与商业化决策者。
+
+触发条件：
+
+- 某个功能可能影响免费版/商业版边界。
+- 某个高级功能可能收费、订阅、按次或买断。
+- 某个能力会增加企业价值但扩大实现或维护成本。
+- 某个收费设计可能损害基础装机体验。
+
+决策原则：
+
+- 基础装机全免费。
+- 收费只覆盖高级自动化、规模化、治理、企业集成和商业支持。
+- 免费版不应被人为做难。
+- 商业版能力必须清晰解释价值。
+- 离线基础部署不依赖联网授权。
+- 任何收费能力都不得削弱网络安全门禁。
+
+输出要求：
+
+```text
+DECISION: APPROVED / APPROVED_WITH_CONDITIONS / BLOCKED / NEEDS_RESEARCH
+CHOSEN DIRECTION
+EDITION / COMMERCIAL IMPACT
+REASONS
+REQUIRED CONDITIONS
+AGENTS TO INVOLVE NEXT
+VALIDATION REQUIRED
+```
+
+### 25.8 下一步落地顺序
+
+短期先不实现 license 系统，先把产品边界写清楚。
+
+优先顺序：
+
+1. 完成 Phase 2.9 ISO 扫描语义增强。
+2. 完成 Phase 2.10 ISO 准备任务框架。
+3. 在 Web UI 增加“准备状态”和“下一步动作”。
+4. 新增一键 bootstrap 脚本规划与安全审查。
+5. 新增自动安装脚本资源模型草案。
+6. 再由 `project_decision_agent` 决定免费版/商业版第一版边界。
+7. 最后再实现 edition/capability flags，不急着接入支付或联网授权。
+
+当前实现进度：
+
+- 1-4 已完成并通过本地安全验证。
+- 5 已进入 Phase 2.12：新增自动安装脚本资源模型草案，先覆盖免费版
+  安全草稿管理，不实现商业策略、不执行无人值守安装、不默认生成清盘分区。
+
+### 25.9 Phase 2.12：自动安装脚本资源模型草案
+
+目标：
+
+- 借鉴 iVentoy“ISO 绑定脚本而不重制 ISO”的方向，但当前阶段只建立
+  SynaBoot 自己的资源模型。
+- 免费版先提供基础自动安装草稿能力：
+  - Ubuntu cloud-init/autoinstall 草稿。
+  - Windows Autounattend 草稿。
+  - 变量白名单展示。
+  - 模板预览。
+  - 高危策略标记为必须人工审查。
+- `autoinstall_profiles` 只表示脚本草稿、模板类型、变量白名单和安全状态；
+  不直接表达 ISO 绑定、默认策略、主机匹配或商业授权策略。
+- 不在 Phase 2.12 做这些事情：
+  - 不把自动安装 profile 接入启动菜单默认项。
+  - 不在 profile 表中直接绑定 ISO。
+  - 不自动选择磁盘、分区、格式化或清盘。
+  - 不执行无人值守安装。
+  - 不实现按 MAC、机型、标签匹配策略。
+  - 不实现 license、支付、联网授权或商业代码混淆流水线。
+
+当前实现记录：
+
+- API 新增 `autoinstall_profiles` 元数据表。
+- 该表为脚本草稿表，不作为 ISO 绑定表。
+- API 新增：
+
+```text
+GET  /api/autoinstall-profiles
+POST /api/autoinstall-profiles
+GET  /api/autoinstall-binding-plan
+```
+
+- `GET /api/autoinstall-binding-plan` 是只读派生规划视图：
+  - 数据来源为当前 `images`、`autoinstall_profiles` 和公开能力边界。
+  - 不创建 `image_autoinstall_bindings` 表。
+  - 不新增绑定写接口。
+  - 不让 iPXE 菜单、任务系统或启动流程消费该规划数据。
+  - 返回候选 ISO、兼容草稿数量、兼容 profile 预览、禁用原因和后续版本
+    候选说明。
+  - `/api/autoinstall-bindings/plan` 仅作为旧命名兼容别名，不作为真实绑定语义。
+- Web UI 新增“自动安装”页面：
+  - 创建 Ubuntu 草稿。
+  - 创建 Windows 草稿。
+  - 展示免费版边界、模板数量、执行状态和高危策略。
+  - 展示 profile 的模板类型、变量白名单、破坏性策略和模板预览。
+  - 展示“绑定规划”只读区块，说明 ISO/profile 真实绑定、默认脚本和菜单接入
+    当前未启用。
+  - 在“绑定规划”中展示同系统类型 profile 候选对，帮助管理员理解未来关系，
+    但这些候选对不会保存为绑定记录。
+- 免费版 capability manifest 已将基础自动安装草稿列入免费核心：
+
+```text
+basic_autoinstall_profile_drafts
+autoinstall_template_variable_allowlist
+```
+
+安全边界：
+
+- 新增 profile 只写入 metadata sqlite，不写入真实 ISO/WIM/磁盘。
+- `template_preview` 中不生成密码、token、私钥。
+- Ubuntu 草稿默认不生成 `storage` 自动分区配置。
+- Windows 草稿默认不生成磁盘配置和产品密钥。
+- 写操作仍需要 `SYNABOOT_ADMIN_TOKEN`。
+
+后续扩展模型：
+
+- `image_autoinstall_bindings`：
+  - 表达 ISO 与 profile 的多对多绑定。
+  - 表达默认项、排序、脚本选择超时。
+  - 作为 Professional 候选能力的主要扩展点。
+- `autoinstall_policies`：
+  - 表达默认镜像、默认脚本、按 MAC/机型/标签匹配等策略。
+  - 作为 Professional/Enterprise 候选能力，不进入当前 Phase 2.12 免费实现。
+- 免费版继续不限基础自动安装草稿创建和预览数量；无 license、无联网时不得降级
+  基础镜像扫描、菜单生成、手动启动和基础草稿管理。
+- 新增自动安装边界专项预检：
+
+```bash
+bash scripts/preflight/check-autoinstall-boundary.sh
+```
+
+- 该脚本只读校验：
+  - 不存在 `image_autoinstall_bindings` 或 `autoinstall_policies` 真实绑定/策略表。
+  - 公开自动安装 API 只包含 profile 草稿与只读 binding plan。
+  - `runtime_binding_enabled`、`menu_integration_enabled`、
+    `policy_matching_enabled`、`write_api_available` 均保持 `false`。
+  - Ubuntu/Windows 模板不默认包含 `storage:`、磁盘分区、产品密钥、
+    自动登录、密码变量、token、secret 或私钥变量。
+  - 免费版能力 manifest 保持基础自动安装草稿不限量。
+  - 公开运行时白名单显式登记自动安装 API。
+- 该脚本已接入 `collect-release-evidence.sh` 和 `bootstrap-synaboot.sh`，
+  防止 Phase 2.12 在免费发布线中滑向商业绑定、默认策略或无人值守执行。
+
+下一步：
+
+1. 由 `project_decision_agent` 输出免费版/Professional/Enterprise 第一版边界。
+2. 由 `architecture_agent` 复审 profile 与 binding/policy 分层是否清晰。
+3. 由 `security_audit_agent` 审查模板预览、变量白名单和商业边界是否安全。
+4. 通过验证后，继续只允许扩展绑定规划说明；真实 profile 与 ISO 绑定写接口、
+   菜单接入和默认策略必须另由 `project_decision_agent` 决定是否进入商业候选
+   或私有商业流程。
+
+---
+
+## 26. GitHub 免费版发布线与本机全功能策略
+
+更新时间：`2026-06-13`
+
+### 26.1 用户目标
+
+当前版本策略必须同时满足：
+
+- 用户本机部署版本永久全功能可用。
+- GitHub 仓库当前分支只 push 免费版代码。
+- 商业收费功能代码先不 push。
+- 商业功能未来需要混淆后再进入私有商业发布流程。
+- 基础装机功能永久免费。
+
+### 26.2 发布线定义
+
+当前 GitHub 分支：
+
+```text
+origin/codex/synaboot-phase1
+```
+
+定义为免费版发布线。
+
+允许进入免费版 GitHub 分支：
+
+- 基础 HTTP/iPXE Boot 平台。
+- ISO 扫描与基础准备流程。
+- HotPE 辅助 Windows 安装。
+- Ubuntu/Linux 基础启动准备。
+- 基础 Web UI。
+- 基础 Image Factory 模板。
+- 网络安全 preflight。
+- 文档、教程、免费版能力说明。
+- edition/capability flags 的公开骨架，但不得包含商业实现细节。
+
+禁止进入免费版 GitHub 分支：
+
+- 商业版专属源码。
+- 私有 license 文件。
+- 付费能力的完整实现代码。
+- 混淆后的商业 bundle。
+- 真实 ISO/WIM/ESD/IMG/VHD/VHDX/QCOW2 镜像。
+- 生成数据库、日志、构建产物。
+- `.env`、token、私钥、账号密码。
+
+### 26.3 本机永久全功能策略
+
+用户本机允许作为开发者/所有者环境保留永久全功能能力。
+
+实现方向：
+
+- 免费版公开代码提供稳定 open-core。
+- 商业功能通过本机私有模块、私有配置或私有构建产物加载。
+- 私有模块路径必须被 `.gitignore` 忽略。
+- 本机全功能能力不得依赖公网授权才能使用。
+- 商业功能代码在当前阶段不提交、不 push。
+
+推荐私有路径：
+
+```text
+private-commercial/
+commercial/
+enterprise/
+proprietary/
+dist-commercial/
+dist-obfuscated/
+```
+
+这些路径只作为本机私有工作区，不属于 GitHub 免费版发布范围。
+
+### 26.4 商业版混淆策略
+
+商业版代码未来进入发布前必须满足：
+
+- 私有商业源码不进入免费版 GitHub 分支。
+- 商业 bundle 经过混淆或打包后再发布给客户。
+- 混淆产物不提交到当前免费版 GitHub 分支。
+- license 验证不影响免费核心功能。
+- 离线部署的免费功能不依赖在线激活。
+- 本机 owner/developer 模式保留永久全功能能力。
+
+当前阶段只做策略和发布防线，不实现支付、联网授权或商业混淆流水线。
+
+补充执行边界：
+
+- 当前免费版分支只保存混淆发布规则，不保存混淆工具、混淆配置、混淆产物
+  或商业源码。
+- 商业源码、license、客户包和混淆 bundle 只能位于 `.gitignore` 覆盖的
+  私有目录。
+- 本机 owner/developer 永久全功能能力不得成为 Docker Compose 默认挂载、
+  API 默认依赖或 Web UI 默认入口。
+  该规则由 `check-private-commercial-scope.sh` 检查 Compose、API 和 Web
+  默认运行文件中的私有路径引用。
+- 公开运行时代码不得新增 license、payment、billing、subscription、
+  activation、professional、enterprise、usage-based、paid、commercial 或
+  obfuscation 端点；该规则由
+  `check-public-runtime-boundary.sh` 校验。
+
+新增公开护栏文档：
+
+```text
+docs/PRIVATE_COMMERCIAL_FLOW.md
+```
+
+该文档只说明本机私有工作区、混淆产物隔离、免费核心不可降级、发布前检查
+和 subagents 审查流程；不包含商业源码、license、支付、联网授权或混淆实现。
+
+新增版本边界决策记录：
+
+```text
+docs/EDITION_BOUNDARY_DECISION.md
+```
+
+该文档固化 `project_decision_agent` 对 Free、Professional、Enterprise 和
+Usage-based 第一版边界的 `APPROVED_WITH_CONDITIONS` 决策。当前只允许公开
+文档、manifest、预检和只读展示，不实现 license、支付、联网授权、商业源码
+或混淆流水线。
+
+### 26.5 发布范围预检
+
+新增预检脚本：
+
+```bash
+bash scripts/preflight/check-release-scope.sh
+bash scripts/preflight/check-edition-boundary.sh
+bash scripts/preflight/check-public-runtime-boundary.sh
+bash scripts/preflight/check-subagent-governance.sh
+```
+
+用途：
+
+- 默认校验 `SYNABOOT_RELEASE_CHANNEL=free`。
+- 默认校验当前分支为 `codex/synaboot-phase1`。
+- 默认校验当前上游为 `origin/codex/synaboot-phase1`。
+- 拦截商业/私有路径进入 GitHub 免费版发布范围。
+- 拦截真实镜像、license、混淆产物、数据库、日志、构建产物、`.env`、
+  私钥等文件进入 Git。
+- 校验 Free 核心能力不限量、公开 catalog 不作为 license gate、
+  Professional/Enterprise/Usage-based 只作为候选层。
+- 静态检查 API 和 Web 前端引用的 `/api/...` 运行时入口，阻断
+  license、payment、billing、subscription、activation、professional、
+  enterprise、usage-based、paid、commercial、obfuscation 等商业实现或
+  收费层端点进入免费版公开代码。
+- 校验 `.codex/agents` 仍然是 11 个项目角色，并确认 `PLAN.md` 包含
+  subagent 调用预算、会话复用和超量调用复盘规则。
+- commit/push 前必须由 `git_audit_agent` 执行。
+
+当前禁止路径和产物包括：
+
+```text
+commercial/
+private-commercial/
+private/
+enterprise/
+proprietary/
+paid/
+dist-commercial/
+dist-obfuscated/
+*.obf.js
+*.obf.py
+*.min.private.js
+*.license
+*.lic
+*.sqlite3
+*.sqlite
+*.db
+data/logs/
+data/builds/
+data/metadata/*.sqlite3
+```
+
+### 26.6 Subagents 职责调整
+
+- `project_decision_agent`：
+  - 决定免费版、Professional、Enterprise、按次或买断的功能边界。
+  - 确认基础装机能力永久免费。
+  - 确认 GitHub 当前分支只作为免费版发布线。
+
+- `architecture_agent`：
+  - 设计 edition/capability flags。
+  - 保持免费功能在无 license、无联网时仍可用。
+  - 设计本机私有商业模块加载边界。
+
+- `security_audit_agent`：
+  - 审查商业代码是否误入免费版发布线。
+  - 审查 license 逻辑是否破坏免费核心功能。
+  - 审查混淆产物、授权文件和私有配置是否被误提交。
+
+- `git_audit_agent`：
+  - commit/push 前必须运行 `check-release-scope.sh`。
+  - 禁止 push 商业源码、混淆产物、真实镜像和 secrets。
+  - 只允许将免费版代码推送到当前 GitHub 分支。
+
+### 26.7 下一步实现队列
+
+1. 先完成 Phase 2.9 ISO 扫描语义增强。
+2. 再完成 Phase 2.10 ISO 准备任务框架。
+3. 同步实现免费版 capability manifest：
+
+```text
+config/synaboot/capabilities.free.json
+```
+
+4. Web UI 只展示免费版可用能力和未来商业能力说明，不阻断免费流程。
+5. 等免费版稳定后，再由 `project_decision_agent` 决定商业版第一批功能。
+6. 商业代码另走本机私有目录和私有打包流程，不进入当前 GitHub 免费版分支。
+
+当前实现记录：
+
+- 已新增只读能力端点：
+
+```text
+GET /api/capabilities
+```
+
+- API 优先读取：
+
+```text
+config/synaboot/capabilities.free.json
+```
+
+- Docker Compose 已将 `./config` 以只读方式挂载到 API 容器。
+- Web UI 新增“版本能力”页面，展示：
+  - 免费核心能力。
+  - 免费版不限项。
+  - 未来商业候选。
+  - 禁止进入 GitHub 免费发布线的内容。
+- 新增公开版本边界 catalog：
+
+```text
+config/synaboot/editions.public.json
+```
+
+- 新增商业关键词命中文件 allowlist：
+
+```text
+config/synaboot/commercial-indicators.allowlist.json
+```
+
+- `editions.public.json` 只展示 Free、Professional、Enterprise 和
+  Usage-based 的第一版候选边界，不包含 license、支付、联网授权或商业实现代码。
+- `GET /api/capabilities` 会同时返回 `edition_catalog`，并强制其有效输出为
+  `commercial_code_included=false`、`online_activation_required=false`。
+- 新增只读发布证据脚本：
+
+```text
+scripts/preflight/collect-release-evidence.sh
+```
+
+- 新增内联管理员 token 泄露专项预检：
+
+```text
+scripts/preflight/check-token-disclosure.sh
+```
+
+- 新增版本边界专项预检：
+
+```text
+scripts/preflight/check-edition-boundary.sh
+```
+
+- 新增公开运行时边界专项预检：
+
+```text
+scripts/preflight/check-public-runtime-boundary.sh
+```
+
+- 新增 subagent 治理专项预检：
+
+```text
+scripts/preflight/check-subagent-governance.sh
+```
+
+- 新增 loader 导入安全专项预检：
+
+```text
+scripts/preflight/check-loader-import-safety.sh
+```
+
+- 新增商业私有工作区专项预检：
+
+```text
+scripts/preflight/check-private-commercial-scope.sh
+```
+
+- 新增免费版发布检查清单：
+
+```text
+docs/FREE_RELEASE_CHECKLIST.md
+```
+
+- 该清单明确：
+  - GitHub 当前分支只发布免费版代码。
+  - 本机私有商业工作区允许存在，但不得进入 GitHub 免费发布线。
+  - commit/push 前必须运行发布证据命令并经过 subagents 复核。
+  - 推送远程属于高风险版本控制动作，执行前必须获得用户二次确认。
+
+- 该脚本只读确认：
+  - `commercial/`、`private-commercial/`、`private/`、`enterprise/`、
+    `proprietary/`、`paid/`、`dist-commercial/`、`dist-obfuscated/`
+    均被 `.gitignore` 覆盖。
+  - 上述私有路径没有 tracked/staged/untracked public 文件。
+  - license、混淆 bundle 和私有商业产物没有进入免费版发布范围。
+  - 不创建私有目录，不读取商业代码内容，不写日志或构建产物。
+- 该脚本用于 commit/push 前收集免费版发布线证据：
+  - 当前分支、上游和 release channel。
+  - tracked/staged/untracked/ignored 数量摘要。
+  - `check-release-scope.sh`。
+  - `check-private-commercial-scope.sh`。
+  - `check-edition-boundary.sh`。
+  - `check-public-runtime-boundary.sh`。
+  - `check-autoinstall-boundary.sh`。
+  - `check-subagent-governance.sh`。
+  - `check-network-safety.sh`。
+  - `check-phase3-gates.py`。
+  - `bash scripts/preflight/check-compose-config-safe.sh`。
+  - `git diff --check` 与 `git diff --cached --check`。
+  - 免费版能力 manifest 与公开版本 catalog JSON 关键字段校验。
+  - 商业相关关键词命中文件清单，供 `git_audit_agent` 人工复核是否仅为公开说明。
+  - 商业关键词命中文件必须匹配
+    `config/synaboot/commercial-indicators.allowlist.json`，新增命中文件先
+    BLOCKED，再由主控更新 allowlist 并复核语义。
+  - `check-token-disclosure.sh`，拦截内联管理员 token 命令示例。
+  - `origin` remote 是否指向 GitHub，但不输出完整 remote URL，避免泄露凭据或私有路径。
+  - `18080/tcp` 监听状态。
+  - `apps/`、`scripts/` 下是否残留 Python bytecode cache。
+- 新增 push 前只读就绪检查：
+
+```bash
+bash scripts/preflight/check-free-push-readiness.sh
+```
+
+- 该脚本只用于本地 commit 完成后、远程 push 前：
+  - 先重新运行 `collect-release-evidence.sh`。
+  - 再确认当前分支、upstream 和 origin 仍是免费版 GitHub 发布线。
+  - 要求没有未提交 tracked 变更、暂存未提交变更或未跟踪 public 文件。
+  - 不执行 commit，不执行 push，不输出完整 remote URL。
+  - 当前开发态存在大量未提交变更时，该脚本按设计会 `BLOCKED`；
+    等 `git_audit_agent` 完成审计和本地 commit 后再运行。
+- 该脚本只读运行，不启动服务，不读取 `.env` 内容，不写日志或构建产物。
+- `check-token-disclosure.sh` 可单独运行，也会被 `collect-release-evidence.sh`
+  串联执行。它只扫描 Git 发布范围内的 tracked、staged 和 untracked public
+  文件，拦截 `SYNABOOT_ADMIN_TOKEN=...` 直接拼接
+  `bash/docker/curl/python/node/sh/compose` 的写法，以及历史 smoke token
+  字面量；命中时只输出文件名和行号，不输出疑似 token 值。
+- `check-edition-boundary.sh` 可单独运行，也会被 `collect-release-evidence.sh`
+  串联执行。它校验 `capabilities.free.json` 和 `editions.public.json` 的
+  免费发布线字段、Free 不限量边界、Usage-based 候选层和 no-license-gate
+  展示用途，并用 AST 静态解析 `apps/api/main.py`，确认 API 内置默认
+  capability/catalog 与公开 JSON 完全一致，避免配置缺失时展示边界漂移。
+- `check-public-runtime-boundary.sh` 可单独运行，也会被
+  `collect-release-evidence.sh` 串联执行。它只检查公开运行时代码中的
+  API/前端入口，允许文档和 manifest 描述商业候选能力，但阻断商业授权、
+  支付、订阅、联网激活、收费层或混淆相关实现端点进入免费分支。该脚本同时校验
+  `config/synaboot/public-runtime.allowlist.json`，所有公开运行时 API
+  必须显式登记；新增 API 路径前必须先经过 architecture/security/git 审计。
+- `check-subagent-governance.sh` 可单独运行，也会被
+  `collect-release-evidence.sh` 串联执行。它校验 `.codex/agents` 角色池
+  必须保持 11 个项目角色，并确认 `PLAN.md` 中的 subagent 调用预算、
+  会话复用规则和超量调用复盘没有被移除。
+- 当前 `capabilities` 只是展示型 manifest：
+  - 不实现 license。
+  - 不实现支付。
+  - 不接入联网授权。
+  - 不阻断免费核心流程。
+  - 不包含商业源码或混淆产物。
+
+版本边界决策记录：
+
+- Free：
+  - 覆盖基础装机闭环。
+  - 不限制基础镜像数量、基础菜单生成、手动 iPXE/HTTP Boot、基础自动安装
+    草稿创建与预览。
+  - 不因无 license、无联网而降级基础功能。
+- Professional 候选：
+  - 自动安装脚本库管理。
+  - 一个 ISO 绑定多个自动安装方案。
+  - 高级变量扩展预览。
+  - 默认镜像、默认脚本、菜单超时、脚本选择超时。
+  - 批量镜像标签、版本、生命周期管理。
+  - 一键诊断包导出。
+  - 更完整的 ISO 准备向导。
+- Enterprise 候选：
+  - 多管理员账号与 RBAC。
+  - 审计日志和操作追踪。
+  - 多节点/多站点管理。
+  - 镜像同步、校验和保留策略。
+  - LDAP/OIDC 企业身份集成。
+  - 装机报表、成功率、失败原因和机型统计。
+  - 企业支持、长期维护和升级策略。

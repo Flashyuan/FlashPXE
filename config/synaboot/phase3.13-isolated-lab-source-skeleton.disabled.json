@@ -1,0 +1,49 @@
+{
+  "schema_version": "phase3-isolated-lab-source-skeleton-fixture.v1",
+  "phase": "3.13",
+  "status": "not_runnable",
+  "fixture_only": true,
+  "offline_package_only": true,
+  "loaded_at_runtime": false,
+  "production_lan_allowed": false,
+  "placeholder_context": {
+    "client_boot_mode": "UEFI PXE IPv4",
+    "client_vendor_class": "PXEClient",
+    "client_architecture": "UEFI x64",
+    "synaboot_placeholder_ip": "192.0.2.10",
+    "candidate_bootfile": "snponly.efi",
+    "http_menu_target": "http://192.0.2.10:18080/boot/menu.ipxe"
+  },
+  "forbidden_runtime_state": {
+    "dhcp_server_enabled": false,
+    "dhcp_lease_assignment_allowed": false,
+    "proxydhcp_enabled": false,
+    "tftp_enabled": false,
+    "udp_67_open": false,
+    "udp_69_open": false,
+    "udp_4011_open": false,
+    "host_network_allowed": false,
+    "privileged_container_allowed": false,
+    "production_lan_testing_allowed": false
+  },
+  "offline_expectations": [
+    {
+      "id": "boot_metadata_only",
+      "expected": "future metadata must only point to a reviewed loader candidate",
+      "observed": "",
+      "passed": false
+    },
+    {
+      "id": "no_ordinary_lease",
+      "expected": "SynaBoot must not assign an ordinary client lease",
+      "observed": "",
+      "passed": false
+    },
+    {
+      "id": "http_menu_handoff",
+      "expected": "future iPXE handoff reaches the HTTP menu target",
+      "observed": "",
+      "passed": false
+    }
+  ]
+}

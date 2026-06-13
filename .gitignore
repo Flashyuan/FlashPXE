@@ -12,3 +12,32 @@ data/logs/*
 !data/logs/.gitkeep
 data/builds/*
 !data/builds/.gitkeep
+
+# 管理员导入的 iPXE loader 和本地来源记录属于运行数据，不进入 Git。
+data/boot/loaders/*
+!data/boot/loaders/
+!data/boot/loaders/README.txt
+data/boot/loader-metadata/*
+!data/boot/loader-metadata/
+
+# 用户放入的系统镜像属于本地运行数据，不进入 Git。
+data/images/**
+!data/images/
+!data/images/**/
+!data/images/README.md
+!data/images/**/.gitkeep
+
+# 商业版/专业版功能代码与混淆产物仅允许本机私有保存，不进入免费版 GitHub 分支。
+commercial/
+private-commercial/
+private/
+enterprise/
+proprietary/
+paid/
+dist-commercial/
+dist-obfuscated/
+*.obf.js
+*.obf.py
+*.min.private.js
+*.license
+*.lic

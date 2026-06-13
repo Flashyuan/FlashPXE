@@ -1,0 +1,39 @@
+{
+  "schema_version": "synaboot.public-runtime-allowlist.v1",
+  "purpose": "free_public_runtime_api_boundary",
+  "commercial_code_included": false,
+  "online_activation_required": false,
+  "exact_api_paths": [
+    "/api/autoinstall-binding-plan",
+    "/api/autoinstall-bindings/plan",
+    "/api/autoinstall-profiles",
+    "/api/boot-assets",
+    "/api/boot-entry",
+    "/api/capabilities",
+    "/api/deployment-status",
+    "/api/health",
+    "/api/images",
+    "/api/jobs",
+    "/api/jobs/hotpe-iso-prepare",
+    "/api/jobs/ubuntu-autoinstall",
+    "/api/jobs/ubuntu-autoinstall-template",
+    "/api/jobs/ubuntu-iso-extract-kernel-initrd",
+    "/api/jobs/ubuntu-xorriso-iso",
+    "/api/jobs/windows-adk-package",
+    "/api/menu",
+    "/api/menu/generate",
+    "/api/network-safety",
+    "/api/safety",
+    "/api/scan"
+  ],
+  "allowed_api_prefixes": [
+    "/api/images/",
+    "/api/jobs/"
+  ],
+  "guardrails": [
+    "公开运行时 API 只承载免费核心能力、只读边界展示和安全预检结果。",
+    "商业候选能力只能通过 /api/capabilities 和公开 edition catalog 展示。",
+    "不得新增 license、payment、billing、subscription、activation、professional、enterprise、usage-based、paid、commercial 或 obfuscation 运行时端点。",
+    "新增公开 API 路径必须先更新此白名单并经过 architecture_agent、security_audit_agent 和 git_audit_agent 复核。"
+  ]
+}

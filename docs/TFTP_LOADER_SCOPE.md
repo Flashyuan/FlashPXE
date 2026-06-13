@@ -28,6 +28,8 @@ udp_69_allowed：false
 - 不使用 Docker `network_mode: host`。
 - 不使用 Docker `privileged: true`。
 - 不下载、生成、替换、删除或执行 boot loader。
+- 如需放入本地已审核 loader，必须使用 `scripts/boot-assets/import-loader.py`
+  记录 provenance；不得手工覆盖已有 loader。
 - 不通过 TFTP 服务 ISO、WIM、ESD、IMG、VHD、VHDX、QCOW2 或镜像目录。
 - 不通过 TFTP 服务 `menu.ipxe` 或动态脚本。
 - 不允许 symlink 或父目录 symlink 参与 TFTP 范围。
@@ -70,6 +72,7 @@ undionly.kpxe
 - symlink 文件。
 - 父目录包含 symlink 的文件。
 - 未记录来源、hash、大小和 mtime 的 loader。
+- provenance 缺失或 SHA256 与 loader 文件不匹配的 loader。
 - Secure Boot 风险未标注的 UEFI loader。
 
 ## Loader 证据要求
@@ -95,6 +98,24 @@ undionly.kpxe
 - `symlink_allowed=false`。
 
 当前这些字段由 `/api/boot-assets` 只读模型提供。
+
+本地 loader 导入必须使用：
+
+```text
+python3 scripts/boot-assets/import-loader.py <本地源文件> snponly.efi
+python3 scripts/boot-assets/import-loader.py <本地源文件> ipxe.efi
+```
+
+如果管理员拿到的是本地 `ipxeboot.tar.gz` 或等价 iPXE 归档，可使用：
+
+```text
+python3 scripts/boot-assets/import-ipxe-archive.py <本地归档> snponly.efi
+python3 scripts/boot-assets/import-ipxe-archive.py <本地归档> ipxe.efi
+```
+
+脚本只复制本地文件或固定归档成员到 `./data/boot/loaders`，并把来源、
+SHA256、大小、归档成员和 review 状态写入 `./data/boot/loader-metadata`。
+该操作不联网、不启用 TFTP、ProxyDHCP、DHCP，也不开放 UDP 端口。
 
 ## 路径与扩展名 Denylist
 

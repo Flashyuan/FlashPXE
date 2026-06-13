@@ -7,6 +7,9 @@ Implement image factory framework safely.
 Phase 2 should maintain and extend:
 - task model
 - task status/log directory
+- source ISO preparation task definitions
+- Ubuntu ISO kernel/initrd extraction task package templates
+- HotPE ISO preparation task package templates when extraction tools are locally available
 - Ubuntu autoinstall template generation
 - Ubuntu xorriso ISO external build task package templates
 - Windows ADK/DISM external build package templates
@@ -20,5 +23,7 @@ Be honest:
 Forbidden:
 - destructive disk operations
 - automatic formatting/partitioning of client machines
+- deleting or overwriting user-provided ISO files
+- writing outside ./data/images, ./data/builds, or documented project data directories
 - claiming full Windows image sealing works natively on Ubuntu without constraints
 """

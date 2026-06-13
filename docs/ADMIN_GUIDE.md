@@ -31,13 +31,40 @@ SynaBoot 是零侵入 HTTP/iPXE Boot 平台。
 
 ## 2. 首次部署
 
-复制配置：
+推荐使用安全 bootstrap：
+
+```bash
+bash scripts/bootstrap-synaboot.sh --server-ip 192.168.1.168
+```
+
+该脚本会生成 `.env`、初始化目录、运行发布范围预检、网络安全预检和
+安全 Compose 配置检查。默认不会启动服务。
+
+确认无误后启动：
+
+```bash
+docker compose up -d --build
+```
+
+如需预检通过后直接启动：
+
+```bash
+bash scripts/bootstrap-synaboot.sh --server-ip 192.168.1.168 --start
+```
+
+bootstrap 不安装系统包，不修改网络设备、地址分配、解析、转发或安全策略，
+也不启用 DHCP、ProxyDHCP、TFTP 或 Samba。
+默认会运行发布范围、私有商业范围、版本边界、公开运行时、subagent 治理、
+网络安全预检和安全 Compose 配置检查，不会启动服务，除非显式传入
+`--start`。
+
+手动部署时，复制配置：
 
 ```bash
 cp .env.example .env
 ```
 
-编辑 `.env`：
+编辑 `.env`，不要把 token 发到聊天、工单或 Git：
 
 ```text
 SERVER_IP=192.168.1.168
@@ -56,7 +83,9 @@ bash init-directories.sh
 
 ```bash
 bash scripts/preflight/check-network-safety.sh
-docker compose config
+bash scripts/preflight/check-release-scope.sh
+bash scripts/preflight/check-private-commercial-scope.sh
+bash scripts/preflight/check-compose-config-safe.sh
 ```
 
 启动：
@@ -72,9 +101,14 @@ curl http://localhost:18080/
 curl http://localhost:18080/boot/menu.ipxe
 curl http://localhost:18080/images/
 curl http://localhost:18080/api/images
+curl http://localhost:18080/api/deployment-status
 ```
 
 如果 `18080/tcp` 被占用，不要修改防火墙或路由绕过。应先确认端口归属，再在 `.env` 中改用另一个未占用 TCP 端口，并同步 `SYNABOOT_HTTP_BIND` 与 `SYNABOOT_HTTP_PORT`。
+
+Web UI 的“网络安全”页会显示“部署就绪”只读看板，包括数据目录、配置文件、
+访问 URL 和 admin token 是否已配置。该看板不读取或展示 `.env` 内容，
+也不代表服务已经接管网络启动。
 
 ## 3. 放置镜像
 
@@ -113,10 +147,10 @@ Ubuntu/Linux：
 
 ```text
 data/images/linux/ubuntu-22.04.3/
-├── ubuntu-22.04.3-live-server-amd64.iso
-└── casper/
-    ├── vmlinuz
-    └── initrd
+└── ubuntu-22.04.3-desktop-amd64.iso
+
+data/images/linux/ubuntu-24.04/
+└── ubuntu-24.04.3-desktop-amd64.iso
 ```
 
 Windows：
@@ -126,6 +160,21 @@ data/images/windows/win11/Windows11_24H2.iso
 ```
 
 注意：Windows ISO/WIM/ESD 默认通过 HotPE 辅助安装，不作为 iPXE 直接启动项。
+
+raw ISO 放入后，Web UI 会显示准备状态、缺失文件和下一步动作。Ubuntu
+ISO 需要提取 `casper/vmlinuz` 与 `casper/initrd` 后才会成为可启动条目。
+HotPE ISO 需要人工准备 `wimboot`、`bootmgr`、`BCD`、`boot.sdi`、
+`boot.wim`，并确认来源可信。
+
+真实 ISO 放好后，可运行服务级 smoke test：
+
+```bash
+bash scripts/preflight/check-real-iso-smoke.sh
+```
+
+该脚本会启动 Compose、扫描 4 个真实 ISO、检查 Web UI/API/菜单/镜像仓库，
+并默认执行 `docker compose down`。如需保留服务用于手工查看，可设置
+`SYNABOOT_SMOKE_KEEP_RUNNING=1`。
 
 ## 4. 扫描镜像
 
@@ -137,11 +186,8 @@ data/images/windows/win11/Windows11_24H2.iso
 4. 输入 `.env` 中配置的 `SYNABOOT_ADMIN_TOKEN`。
 5. 检查 `scan_status`、`boot_readiness`、`menu_enabled`。
 
-方式 B：脚本
-
-```bash
-SYNABOOT_ADMIN_TOKEN=<管理员token> bash scripts/sync-metadata.sh
-```
+不建议在 shell 命令历史中写入管理员 token。需要脚本化管理时，应使用受控
+本机会话，并避免把 `.env`、终端输出或 token 截图提交到 Git、工单或聊天。
 
 扫描结果含义：
 
@@ -154,13 +200,8 @@ SYNABOOT_ADMIN_TOKEN=<管理员token> bash scripts/sync-metadata.sh
 
 ## 5. 生成菜单
 
-Web UI 中点击“重新生成菜单”，输入管理员 token。
-
-也可以执行：
-
-```bash
-SYNABOOT_ADMIN_TOKEN=<管理员token> bash scripts/generate-ipxe-menu.sh
-```
+Web UI 中点击“重新生成菜单”，输入管理员 token。不要在 shell 命令历史、
+截图、工单或聊天中暴露该 token。
 
 只有满足以下条件的镜像会进入菜单：
 
@@ -214,7 +255,66 @@ chain http://192.168.1.168:18080/boot/menu.ipxe
 
 手动 UEFI HTTP Boot 使用同一 URL。
 
-## 7. 日常维护
+## 7. 自动安装草稿
+
+Web UI 的“自动安装”页可以创建 Ubuntu 和 Windows 自动安装模板草稿。
+
+当前免费版只提供安全草稿管理：
+
+- 保存模板草稿、变量白名单和模板预览。
+- 默认不生成清盘、分区、格式化策略。
+- 默认不执行无人值守安装。
+- 不把 profile 接入启动菜单。
+- “绑定规划”只读展示未来可兼容的 ISO/profile 候选对，但不会保存绑定关系。
+
+真实自动安装前，管理员必须人工审查模板内容、账号策略、密码 hash、
+磁盘策略和数据覆盖风险。
+
+## 8. 版本能力与商业边界
+
+Web UI 的“版本能力”页展示 Free、Professional、Enterprise 和 Usage-based
+的公开候选边界。
+
+当前 GitHub 分支只作为免费版发布线：
+
+- 基础装机、镜像扫描、菜单生成、手动 iPXE/HTTP Boot、基础自动安装草稿保持免费。
+- 商业源码、私有 license、混淆 bundle 和客户交付包不得进入当前分支。
+- 本机 owner/developer 可以在 `.gitignore` 覆盖的私有目录中保留未来全功能能力。
+- 免费核心不因无 license、无联网而降级。
+
+商业私有流程边界见：
+
+```text
+docs/PRIVATE_COMMERCIAL_FLOW.md
+```
+
+## 9. 发布前检查
+
+提交或推送免费版前，先按专门清单执行只读检查：
+
+```bash
+bash scripts/preflight/check-release-scope.sh
+bash scripts/preflight/check-private-commercial-scope.sh
+bash scripts/preflight/check-edition-boundary.sh
+bash scripts/preflight/check-public-runtime-boundary.sh
+bash scripts/preflight/collect-release-evidence.sh
+git diff --check
+git diff --cached --check
+```
+
+必须确认 `.env`、真实 ISO、SQLite、日志、构建产物、私有 license、
+商业源码和混淆产物没有进入 Git 范围。
+
+远程 push 前必须经过 `git_audit_agent` 审查、`project_decision_agent`
+确认发布方向，并获得用户二次确认。
+
+完整规则见：
+
+```text
+docs/FREE_RELEASE_CHECKLIST.md
+```
+
+## 10. 日常维护
 
 查看服务：
 
@@ -242,12 +342,12 @@ docker compose down
 4. 重新生成菜单。
 5. 从测试客户端验证启动。
 
-## 8. 故障排查
+## 11. 故障排查
 
 Web UI 打不开：
 
 - 检查 `docker compose ps`。
-- 检查端口是否监听：`ss -ltnp | grep 18080`。
+- 运行 `bash scripts/preflight/check-network-safety.sh` 查看只读端口摘要。
 - 检查 `SYNABOOT_HTTP_BIND` 与 `SYNABOOT_HTTP_PORT` 是否一致。
 
 菜单里没有镜像：
@@ -260,12 +360,17 @@ Web UI 打不开：
 Ubuntu 无法启动：
 
 - 确认同一目录下有 ISO、`casper/vmlinuz`、`casper/initrd`。
+- 查看镜像详情中的 `preparation_status`、`missing_artifacts` 和 `next_action`。
 
 Windows 无法直接启动：
 
 - 这是预期行为。请先启动 HotPE，再访问 Windows 镜像仓库。
 
-## 9. 变更端口
+自动安装没有执行：
+
+- 这是预期行为。当前免费版只管理草稿、模板预览和只读绑定规划。
+
+## 12. 变更端口
 
 如果 `18080/tcp` 也被占用，可在 `.env` 中改成其他未占用 TCP 端口：
 

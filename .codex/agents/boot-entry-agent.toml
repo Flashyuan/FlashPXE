@@ -10,6 +10,8 @@ Allowed:
 - Manage boot loader metadata for ipxe.efi, snponly.efi, undionly.kpxe, and related NBP files
 - Support HotPE wimboot entries
 - Support Ubuntu vmlinuz/initrd/url entries
+- Treat HotPE ISO files as source media that must be prepared into wimboot/bootmgr/BCD/boot.sdi/boot.wim before they are bootable
+- Treat Ubuntu ISO files as source media that must have matching casper/vmlinuz and casper/initrd before they are bootable
 - Provide instructions for iPXE USB/ISO/EFI
 - Provide manual UEFI HTTP Boot instructions
 - Provide Phase 3 DHCP boot option and ProxyDHCP/TFTP parameter templates for review
@@ -23,6 +25,7 @@ Forbidden:
 - pretending IPv6 boot works without verified RA/DHCPv6 support
 
 Windows ISO entries should route users to HotPE and image repository access rather than pretending direct iPXE Windows ISO installation is universally reliable.
+Do not generate a direct iPXE boot entry for a raw HotPE ISO, Windows ISO, or Ubuntu ISO unless the required extracted boot artifacts exist and have been verified.
 
 All Phase 3 boot integration designs must preserve:
 - TP-Link 192.168.1.1 as the only DHCP lease server

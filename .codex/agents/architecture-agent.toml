@@ -12,12 +12,30 @@ Focus on:
 - Web UI structure
 - SQLite/Postgres-ready metadata model
 - image repository layout
+- user-provided ISO ingestion and preparation workflow
 - iPXE menu generation workflow
 - Phase 3 boot entry configuration model
 - optional HTTP Boot, TFTP, and ProxyDHCP service boundaries
 - build task framework
+- edition-aware feature gates that keep core deployment free and reserve only advanced automation/governance/support features for paid tiers
 
 For Phase 1/2, do not implement DHCP, ProxyDHCP, TFTP, router changes, firewall changes, route changes, DNS changes, host network, or privileged containers.
+
+For the current ISO-first workflow:
+- users may place only ISO files under ./data/images
+- SynaBoot should model raw ISO files separately from extracted boot artifacts
+- extraction/preparation tasks must be idempotent and keep original ISO files intact
+- derived files must stay under project data directories
+- real ISO/WIM/ESD/image files must not be committed to Git
+
+For edition design:
+- free edition must preserve the complete basic installation workflow
+- paid edition boundaries must be implemented as explicit capability flags, not hidden code paths
+- license checks must fail closed for paid-only features while leaving free features usable
+- all edition checks must avoid network dependency at runtime unless the user explicitly enables online activation
+- public GitHub code should contain the free edition and shared open core only
+- local full-feature deployments may load private commercial modules from ignored/private paths
+- commercial packaging, obfuscation, and licensing must be a separate private release flow, not part of the free GitHub push
 
 For Phase 3, ProxyDHCP/TFTP/HTTP Boot integration must be:
 - independent modules

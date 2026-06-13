@@ -45,6 +45,38 @@ Option 路线。
 
 ## 部署
 
+推荐使用安全 bootstrap：
+
+```bash
+bash scripts/bootstrap-synaboot.sh --server-ip 192.168.1.168
+```
+
+该脚本会生成 `.env`、初始化目录、运行发布范围预检、网络安全预检和
+安全 Compose 配置检查。默认不会启动服务。
+
+确认无误后启动：
+
+```bash
+docker compose up -d --build
+```
+
+如需预检通过后直接启动：
+
+```bash
+bash scripts/bootstrap-synaboot.sh --server-ip 192.168.1.168 --start
+```
+
+bootstrap 不会安装系统包，不会修改现有网络设备、地址分配、解析、转发或安全策略，
+也不会启用任何自动网络启动服务或文件共享服务。
+默认会运行发布范围、私有商业范围、版本边界、公开运行时、subagent 治理、
+网络安全预检和安全 Compose 配置检查，不会启动服务，除非显式传入
+`--start`。
+
+Web UI 的“网络安全”页面会显示只读部署就绪状态，包括数据目录、配置文件、
+访问 URL 和 admin token 是否已配置。该页面不会读取或展示 `.env` 内容。
+
+手动部署流程如下。
+
 准备 `.env`：
 
 ```bash
@@ -64,8 +96,35 @@ SYNABOOT_ADMIN_TOKEN=请替换为强随机token
 
 ```bash
 bash init-directories.sh
+bash scripts/preflight/check-release-scope.sh
+bash scripts/preflight/check-private-commercial-scope.sh
+bash scripts/preflight/check-edition-boundary.sh
+bash scripts/preflight/check-public-runtime-boundary.sh
 bash scripts/preflight/check-network-safety.sh
-docker compose config
+bash scripts/preflight/check-compose-config-safe.sh
+```
+
+发布前可收集免费版证据摘要：
+
+```bash
+bash scripts/preflight/collect-release-evidence.sh
+```
+
+该命令只读运行，不启动服务，不读取 `.env` 内容，不写日志或构建产物。
+它会校验免费版 manifest 的关键字段，并输出商业相关关键词命中文件清单，
+供 `git_audit_agent` 在 commit/push 前复核。
+它也会确认商业私有目录、license 和混淆产物没有进入免费版 Git 发布范围。
+
+完整发布检查清单见：
+
+```text
+docs/FREE_RELEASE_CHECKLIST.md
+```
+
+版本边界决策记录见：
+
+```text
+docs/EDITION_BOUNDARY_DECISION.md
 ```
 
 启动服务：
@@ -127,23 +186,30 @@ Ubuntu/Linux 需要同一目录下同时具备 ISO、kernel、initrd：
 
 ```text
 data/images/linux/ubuntu-22.04.3/
-├── ubuntu-22.04.3-live-server-amd64.iso
-└── casper/
-    ├── vmlinuz
-    └── initrd
+└── ubuntu-22.04.3-desktop-amd64.iso
+
+data/images/linux/ubuntu-24.04/
+└── ubuntu-24.04.3-desktop-amd64.iso
 ```
 
 Windows ISO/WIM/ESD 放入 `data/images/windows/` 后，默认通过 HotPE 辅助安装，不作为通用直接启动项。
+
+真实 ISO 放好后，可运行服务级 smoke test：
+
+```bash
+bash scripts/preflight/check-real-iso-smoke.sh
+```
+
+该脚本会启动 Compose、扫描 4 个真实 ISO、检查 Web UI/API/菜单/镜像仓库，
+并默认执行 `docker compose down`。如需保留服务用于手工查看，可设置
+`SYNABOOT_SMOKE_KEEP_RUNNING=1`。
 
 ## 扫描与菜单
 
 镜像放入 `data/images` 后，在 Web UI 点击“扫描镜像”，输入 `SYNABOOT_ADMIN_TOKEN`。
 
-也可以用脚本触发扫描：
-
-```bash
-SYNABOOT_ADMIN_TOKEN=<管理员token> bash scripts/sync-metadata.sh
-```
+不建议在 shell 命令历史中写入管理员 token。需要脚本化管理时，应使用受控
+本机会话，并避免把 `.env`、终端输出或 token 截图提交到 Git、工单或聊天。
 
 扫描会生成：
 
@@ -167,6 +233,41 @@ menu_enabled=true
 ```bash
 curl http://192.168.1.168:18080/boot/menu.ipxe
 ```
+
+## 自动安装草稿
+
+Web UI 的“自动安装”页面可以创建 Ubuntu 和 Windows 自动安装模板草稿。
+
+当前免费版边界：
+
+- 只保存模板草稿、变量白名单和模板预览。
+- 不限制基础草稿创建和预览数量。
+- 默认不绑定启动菜单。
+- 默认不生成清盘、分区、格式化策略。
+- 默认不执行无人值守安装。
+- 模板用于真实装机前必须由管理员人工审查。
+- “绑定规划”只读展示可作为未来绑定候选的 Windows/Linux ISO 和兼容草稿数量，
+  并列出同系统类型的兼容草稿；这些候选对不会保存为绑定关系，也不会接入启动菜单。
+
+高级脚本库、多脚本绑定、默认策略、超时策略、按主机匹配和审计报表属于后续商业版候选能力；
+基础装机、镜像扫描和手动启动流程保持免费。
+
+## 版本能力边界
+
+Web UI 的“版本能力”页面读取 `config/synaboot/capabilities.free.json`，
+展示免费核心能力、免费版不限项、未来商业候选能力，以及禁止进入 GitHub
+免费发布线的内容。
+
+同一页面也会读取 `config/synaboot/editions.public.json`，展示 Free、
+Professional、Enterprise 和 Usage-based 的第一版公开边界。
+
+当前阶段该页面只做公开说明：
+
+- 不实现 license。
+- 不实现支付。
+- 不接入联网授权。
+- 不阻断免费核心流程。
+- 不包含商业源码或混淆产物。
 
 ## 启动客户端
 
@@ -253,6 +354,8 @@ Windows ISO/WIM/ESD 不作为通用 iPXE 直接启动项。推荐先启动 HotPE
 - `docs/USER_GUIDE.md`：用户启动电脑、选择系统和安装系统教程。
 - `docs/ARCHITECTURE.md`：架构说明与图例。
 - `docs/NETWORK_SAFETY.md`：网络安全边界。
+- `docs/FREE_RELEASE_CHECKLIST.md`：免费版发布前检查清单。
+- `docs/PRIVATE_COMMERCIAL_FLOW.md`：私有商业功能、混淆打包和免费发布线隔离边界。
 - `docs/BOOT_ENTRY_INTEGRATION.md`：Phase 3 启动入口集成门禁。
 - `docs/BOOT_ENTRY_LOCAL_VERIFICATION.md`：本地设备能力确认记录。
 - `docs/PROXYDHCP_FEASIBILITY.md`：受控 ProxyDHCP 可行性评估。

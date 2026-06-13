@@ -7,11 +7,30 @@ set image-url ${base-url}/images
 
 :start
 menu SynaBoot Phase 2 - HTTP/iPXE Boot
-item --gap --          === No ready images ===
+item --gap --          === Linux ===
+item linux_linux_ubuntu_22_04_3 Linux installer - linux/ubuntu-22.04.3
+item linux_linux_ubuntu_24_04 Linux installer - linux/ubuntu-24.04
+item --gap --          === Tools ===
 item shell            iPXE shell
 item reboot           Reboot
 item poweroff         Power off
-choose --default shell --timeout 15000 target && goto ${target} || goto start
+choose --default linux_linux_ubuntu_22_04_3 --timeout 15000 target && goto ${target} || goto start
+
+:hotpe
+echo HotPE files are not enabled or not ready.
+goto start
+
+:linux_linux_ubuntu_22_04_3
+echo Loading Linux installer from linux/ubuntu-22.04.3...
+kernel ${base-url}/images/linux/ubuntu-22.04.3/casper/vmlinuz ip=dhcp url=${base-url}/images/linux/ubuntu-22.04.3/ubuntu-22.04.3-desktop-amd64.iso ---
+initrd ${base-url}/images/linux/ubuntu-22.04.3/casper/initrd
+boot || goto boot_failed
+
+:linux_linux_ubuntu_24_04
+echo Loading Linux installer from linux/ubuntu-24.04...
+kernel ${base-url}/images/linux/ubuntu-24.04/casper/vmlinuz ip=dhcp url=${base-url}/images/linux/ubuntu-24.04/ubuntu-24.04.3-desktop-amd64.iso ---
+initrd ${base-url}/images/linux/ubuntu-24.04/casper/initrd
+boot || goto boot_failed
 
 :shell
 shell

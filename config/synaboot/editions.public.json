@@ -1,0 +1,92 @@
+{
+  "schema_version": "synaboot.editions.v1",
+  "catalog_purpose": "public_display_only_no_license_gate",
+  "pricing_model_status": "proposal_not_enforcement",
+  "commercial_code_included": false,
+  "online_activation_required": false,
+  "tiers": [
+    {
+      "id": "free",
+      "name": "Free",
+      "billing": "free",
+      "summary": "基础装机闭环永久免费。",
+      "included": [
+        "Docker Compose 本地部署",
+        "HTTP 镜像仓库",
+        "本地 ISO 扫描",
+        "HotPE 辅助 Windows 安装",
+        "Ubuntu/Linux 基础启动准备",
+        "iPXE HTTP 菜单生成",
+        "手动 iPXE USB/ISO/EFI 启动",
+        "手动 UEFI HTTP Boot",
+        "基础 Web UI 镜像管理",
+        "基础 Image Factory 模板",
+        "Ubuntu autoinstall / Windows Autounattend 安全草稿",
+        "模板预览与变量白名单展示",
+        "网络安全 preflight",
+        "Phase 3 只读启动入口状态",
+        "基础文档、教程和故障排查"
+      ],
+      "limits": {
+        "basic_image_count_limited": false,
+        "basic_menu_generation_limited": false,
+        "manual_ipxe_http_boot_limited": false,
+        "basic_autoinstall_profile_drafts_limited": false,
+        "offline_core_requires_license": false
+      }
+    },
+    {
+      "id": "professional",
+      "name": "Professional",
+      "billing": "subscription_or_one_time_purchase_candidate",
+      "summary": "面向小团队和高频装机管理员的高级效率能力。",
+      "candidate_features": [
+        "自动安装脚本库管理",
+        "一个 ISO 绑定多个自动安装方案",
+        "高级变量扩展预览",
+        "默认镜像、默认脚本、菜单超时和脚本选择超时",
+        "批量镜像标签、版本和生命周期管理",
+        "一键诊断包导出",
+        "更完整的 ISO 准备向导",
+        "小团队离线授权或一次性买断候选"
+      ]
+    },
+    {
+      "id": "enterprise",
+      "name": "Enterprise",
+      "billing": "subscription_or_support_contract_candidate",
+      "summary": "面向企业治理、规模化和长期支持。",
+      "candidate_features": [
+        "多管理员账号与 RBAC",
+        "审计日志和操作追踪",
+        "多节点/多站点管理",
+        "镜像同步、校验和保留策略",
+        "LDAP/OIDC 企业身份集成",
+        "装机报表、成功率、失败原因和机型统计",
+        "企业支持、长期维护和升级策略",
+        "大规模无人值守装机治理能力"
+      ]
+    },
+    {
+      "id": "usage_based",
+      "name": "Usage-based",
+      "billing": "per_use_or_project_service_candidate",
+      "summary": "面向高价值、大规模或专家服务型任务的按次/项目制候选。",
+      "candidate_features": [
+        "大规模批量无人值守装机任务",
+        "企业级驱动包/脚本注入流水线",
+        "自动生成定制镜像任务",
+        "远程协助诊断",
+        "专家模板生成"
+      ]
+    }
+  ],
+  "guardrails": [
+    "当前 GitHub 分支只发布 Free 免费版代码。",
+    "Professional/Enterprise 当前仅为公开候选说明，不包含实现代码。",
+    "Usage-based 当前仅为按次或项目制候选说明，不包含实现代码。",
+    "商业源码、私有 license 和混淆产物不得进入 GitHub 免费发布线。",
+    "本机 owner/developer 私有全功能能力不得依赖公网授权才能使用。",
+    "任何收费能力都不得削弱基础装机和网络安全门禁。"
+  ]
+}

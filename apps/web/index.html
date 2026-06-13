@@ -18,6 +18,8 @@
       <nav>
         <button class="active" data-view="dashboard">Dashboard</button>
         <button data-view="images">镜像仓库</button>
+        <button data-view="capabilities">版本能力</button>
+        <button data-view="autoinstall">自动安装</button>
         <button data-view="menu">菜单预览</button>
         <button data-view="boot-entry">启动入口</button>
         <button data-view="hotpe">HotPE 指南</button>
@@ -72,6 +74,7 @@
                   <th>类型</th>
                   <th>大小</th>
                   <th>状态</th>
+                  <th>准备</th>
                   <th>启动方式</th>
                   <th>路径</th>
                   <th>菜单</th>
@@ -89,6 +92,42 @@
         </div>
       </section>
 
+      <section id="capabilities" class="view">
+        <div class="panel">
+          <h2>发布线状态</h2>
+          <div id="capability-summary" class="safety-grid"></div>
+          <p id="capability-note"></p>
+        </div>
+        <div class="panel split">
+          <div>
+            <h2>免费核心能力</h2>
+            <ul id="capability-free-list"></ul>
+          </div>
+          <div>
+            <h2>免费版不限项</h2>
+            <ul id="capability-limits-list"></ul>
+          </div>
+        </div>
+        <div class="panel split">
+          <div>
+            <h2>未来商业候选</h2>
+            <ul id="capability-paid-list"></ul>
+          </div>
+          <div>
+            <h2>禁止进入公开线</h2>
+            <ul id="capability-blocked-list"></ul>
+          </div>
+        </div>
+        <div class="panel">
+          <h2>版本边界</h2>
+          <div id="edition-catalog" class="cards"></div>
+        </div>
+        <div class="panel">
+          <h2>商业化护栏</h2>
+          <ul id="edition-guardrails"></ul>
+        </div>
+      </section>
+
       <section id="menu" class="view">
         <div class="panel split">
           <div>
@@ -98,6 +137,31 @@
             <button id="generate-menu-button" class="primary admin-action">重新生成菜单</button>
           </div>
           <pre id="menu-preview"></pre>
+        </div>
+      </section>
+
+      <section id="autoinstall" class="view">
+        <div class="toolbar">
+          <button data-os-family="ubuntu" class="primary autoinstall-create admin-action">创建 Ubuntu 草稿</button>
+          <button data-os-family="windows" class="autoinstall-create admin-action">创建 Windows 草稿</button>
+        </div>
+        <div class="metrics">
+          <article><span>模板草稿</span><strong id="autoinstall-count">0</strong></article>
+          <article><span>免费版边界</span><strong>安全模板管理</strong></article>
+          <article><span>执行状态</span><strong>默认不自动执行</strong></article>
+          <article><span>高危策略</span><strong>人工审查</strong></article>
+        </div>
+        <div class="panel prose">
+          <h2>自动安装边界</h2>
+          <p>当前免费版只管理自动安装脚本草稿、变量白名单和模板预览；不会默认生成清盘分区策略，也不会自动执行无人值守安装。</p>
+        </div>
+        <div class="panel">
+          <h2>绑定规划</h2>
+          <div id="autoinstall-binding-plan"></div>
+        </div>
+        <div class="panel">
+          <h2>模板草稿</h2>
+          <div id="autoinstall-list" class="cards"></div>
         </div>
       </section>
 
@@ -128,6 +192,38 @@ boot.wim</pre>
         <div class="panel">
           <h2>本地事实门禁</h2>
           <div id="boot-entry-gate" class="cards"></div>
+        </div>
+        <div class="panel">
+          <h2>隔离验证计划</h2>
+          <div id="boot-entry-isolated-plan" class="cards"></div>
+        </div>
+        <div class="panel">
+          <h2>PXE IPv4 就绪证据</h2>
+          <div id="boot-entry-pxe-readiness" class="cards"></div>
+        </div>
+        <div class="panel">
+          <h2>PXE 隔离实验 Boot Metadata 计划</h2>
+          <div id="boot-entry-pxe-lab-plan" class="cards"></div>
+        </div>
+        <div class="panel">
+          <h2>隔离实验 Boot Services 禁用骨架</h2>
+          <div id="boot-entry-disabled-skeleton" class="cards"></div>
+        </div>
+        <div class="panel">
+          <h2>隔离实验证据包</h2>
+          <div id="boot-entry-evidence-package" class="cards"></div>
+        </div>
+        <div class="panel">
+          <h2>隔离实验配置意图包</h2>
+          <div id="boot-entry-config-intent-package" class="cards"></div>
+        </div>
+        <div class="panel">
+          <h2>隔离实验源码骨架</h2>
+          <div id="boot-entry-source-skeleton-package" class="cards"></div>
+        </div>
+        <div class="panel">
+          <h2>隔离实验手工声明门禁</h2>
+          <div id="boot-entry-manual-declaration-gate" class="cards"></div>
         </div>
         <div class="panel">
           <h2>固件入口</h2>
@@ -163,6 +259,28 @@ boot.wim</pre>
       </section>
 
       <section id="safety" class="view">
+        <div class="panel">
+          <h2>部署就绪</h2>
+          <div id="deployment-status" class="safety-grid"></div>
+        </div>
+        <div class="panel">
+          <h2>本地目录</h2>
+          <div id="deployment-paths" class="cards"></div>
+        </div>
+        <div class="panel split">
+          <div>
+            <h2>配置文件</h2>
+            <ul id="deployment-config-files"></ul>
+          </div>
+          <div>
+            <h2>只读边界</h2>
+            <ul id="deployment-runtime-checks"></ul>
+          </div>
+        </div>
+        <div class="panel">
+          <h2>建议动作</h2>
+          <ul id="deployment-next-actions"></ul>
+        </div>
         <div class="panel">
           <h2>网络安全状态</h2>
           <div id="safety-status" class="safety-grid"></div>

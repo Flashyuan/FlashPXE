@@ -33,7 +33,7 @@ else
 fi
 
 if command -v ss >/dev/null 2>&1; then
-  listeners="$(ss -lntu || true)"
+  listeners="$(ss -lntu 2>/dev/null || true)"
   printf '%s\n' "$listeners" | grep -Eq ':(67|68|69|4011)[[:space:]]' && fail "当前主机已监听 DHCP/TFTP/ProxyDHCP 相关端口"
   if printf '%s\n' "$listeners" | grep -Eq ":${http_port}[[:space:]]"; then
     info "端口 ${http_port}/tcp 当前已有监听；部署前请确认是否为 SynaBoot 或其他预期服务"
@@ -71,10 +71,35 @@ danger_patterns=(
   'proxydhcp'
 )
 
+allowed_disabled_keyword_context() {
+  local script="$1"
+  local pattern="$2"
+
+  case "$script:$pattern" in
+    scripts/boot-assets/import-loader.py:tftp|scripts/boot-assets/import-loader.py:proxydhcp)
+      grep -Fq '"network_services_enabled": False' "$script" \
+        && grep -Fq '"tftp_enabled": False' "$script" \
+        && grep -Fq '"proxydhcp_enabled": False' "$script"
+      ;;
+    scripts/preflight/check-loader-import-safety.sh:*)
+      grep -Fq 'loader_import_network_services=disabled' "$script"
+      ;;
+    scripts/preflight/check-phase3-gates.py:*)
+      grep -Fq 'Phase 3 gates remain readonly and blocked' "$script"
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
 while IFS= read -r script; do
   [[ "$script" == "scripts/preflight/check-network-safety.sh" ]] && continue
   for pattern in "${danger_patterns[@]}"; do
     if grep -Eiq "$pattern" "$script"; then
+      if allowed_disabled_keyword_context "$script" "$pattern"; then
+        continue
+      fi
       fail "脚本 ${script} 包含危险网络关键字: ${pattern}"
     fi
   done

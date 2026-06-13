@@ -10,6 +10,7 @@ Phase 3 自动网络启动入口仍处于门禁状态。
 
 - 查看 `/api/boot-entry` 启动入口模型。
 - 查看 `/api/boot-assets` 固定白名单 loader 元数据。
+- 查看 `IPXE_LOADER_SOURCES.md` 中的 iPXE loader 来源与本地导入说明。
 - 通过 `http://<SERVER_IP>:18080/boot/menu.ipxe` 使用 HTTP/iPXE 菜单。
 - 通过手动 iPXE USB/ISO/EFI 或手动 UEFI HTTP Boot 进入 SynaBoot。
 
@@ -125,7 +126,7 @@ undionly.kpxe
 ```bash
 git status --short
 bash scripts/preflight/check-network-safety.sh
-docker compose config
+bash scripts/preflight/check-compose-config-safe.sh
 ss -lntu | grep -E ':(67|68|69|4011)\b' || true
 rg -n "network_mode: host|privileged: true|67:|68:|69:|4011:|dnsmasq|proxydhcp|tftp|dhcp" docker-compose.yml scripts apps config docs PLAN.md
 ```

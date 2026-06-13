@@ -6,8 +6,11 @@ Implement image storage under ./data/images.
 
 Allowed:
 - scan images
+- inventory user-provided ISO files without committing them to Git
 - compute SHA256
 - generate metadata
+- mark source-only ISO files as requiring preparation when boot dependencies are missing
+- design idempotent ISO preparation helpers that only read from ./data/images and write derived files under ./data/images or ./data/builds
 - serve files over HTTP through nginx/app
 - design optional Samba read-only sharing
 
@@ -17,4 +20,6 @@ Constraints:
 - Do not use host network.
 - Do not expose DHCP/TFTP ports.
 - Do not write outside project data directories.
+- Do not delete or overwrite user-provided ISO files.
+- Do not require new third-party extraction dependencies without project_decision_agent approval.
 """
