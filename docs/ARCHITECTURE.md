@@ -99,8 +99,8 @@ GET /api/boot-entry
         +--> 启动入口状态：HTTP IPv4 / PXE IPv4 / HTTP IPv6 / PXE IPv6
         +--> 文档入口：BOOT_ENTRY_INTEGRATION.md
         +--> 本地确认模板：BOOT_ENTRY_LOCAL_VERIFICATION.md
-        +--> ProxyDHCP 可行性评估：PROXYDHCP_FEASIBILITY.md
-        +--> ProxyDHCP 报文判读：PROXYDHCP_PACKET_REVIEW.md
+        +--> Boot Metadata Proxy 可行性评估：PROXYDHCP_FEASIBILITY.md
+        +--> Boot Metadata Proxy 报文判读：PROXYDHCP_PACKET_REVIEW.md
         +--> TFTP loader 范围：TFTP_LOADER_SCOPE.md
         +--> Phase 3 回滚清单：PHASE3_ROLLBACK_CHECKLIST.md
         +--> Phase 3 审查模板：PHASE3_REVIEW_TEMPLATES.md
@@ -121,7 +121,7 @@ GET /api/network-safety
         |
         +--> phase3_gate：同步展示 Phase 3.3 门禁
         +--> status=router_option_path_not_recommended_but_blocked
-        +--> allowed_next_step=controlled_proxydhcp_feasibility_evaluation_only
+        +--> allowed_next_step=controlled_boot_metadata_proxy_feasibility_evaluation_only
         +--> implementation_allowed=false
         +--> service_enablement_allowed=false
         '--> production_lan_testing_allowed=false
@@ -151,8 +151,16 @@ Nginx `/boot/` 只允许精确访问：
 
 管理员已通过只读截图确认 TL-ER6120T 设备身份、硬件版本和固件版本，
 但当前未在管理界面中找到 DHCP Option `66/67` 或等价 boot option
-配置入口。因此 Phase 3.3 默认不依赖主路由 DHCP Option 路线，
-只允许继续受控 ProxyDHCP 可行性评估。
+配置入口。管理员已确认当前 TL-ER6120T 不能下发本项目所需的
+PXE/HTTP Boot 启动元数据。因此 Phase 3.3 默认不依赖主路由
+DHCP Option 路线，只允许继续 Boot Metadata Proxy 可行性评估。
+
+Boot Metadata Proxy 是未来候选模块，不是当前 runtime module。它的
+产品承诺是补齐路由器无法下发启动元数据的缺口，但不得接管 DHCP、DNS、
+默认网关或普通网络配置。未来即使进入隔离实验，也只能响应
+`PXEClient` / `HTTPClient`，并只返回 `bootfile`、`next-server` 或
+HTTP boot URL；它必须默认关闭、可一键关闭，生产 LAN 启用前必须由
+用户二次确认。
 `phase3_3_gate` 将这些事实拆成已确认事实、仍缺事实、解除门禁前置
 条件和禁止推断四类，只用于 Web UI 只读展示，防止后续把设备型号、
 硬件版本或固件版本误当成 DHCP Option `66/67`、next-server、

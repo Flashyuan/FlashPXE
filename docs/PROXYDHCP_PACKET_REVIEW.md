@@ -1,19 +1,22 @@
-# Phase 3.3 ProxyDHCP 报文字段与抓包判读清单
+# Phase 3.3-A Boot Metadata Proxy 报文字段与抓包判读清单
 
-更新时间：2026-06-12
+更新时间：2026-06-15
 
 ## 状态与范围
 
 ```text
-phase：3.3
+phase：3.3-A
 review_status：documentation_only
+product_capability：Boot Metadata Proxy
 runtime_status：BLOCKED
 implementation_allowed：false
 service_enablement_allowed：false
 production_lan_capture_allowed：false
 ```
 
-本文只定义未来隔离验证时的报文字段判读标准。
+本文只定义未来隔离验证时，SynaBoot Boot Metadata Proxy 的报文字段
+判读标准。Boot Metadata Proxy 只补充 PXE/HTTP Boot 启动元数据；
+不得被判读或实现为普通 DHCP Server。
 
 本文不是抓包教程，不包含命令，不包含 ProxyDHCP、TFTP、DHCP 或
 docker-compose 的配置步骤，也不批准在生产 LAN 启动、监听或抓包。
@@ -46,27 +49,30 @@ docker-compose 的配置步骤，也不批准在生产 LAN 启动、监听或抓
 - SynaBoot 不得分配 IP。
 - SynaBoot 不得下发 subnet、router、gateway、DNS、lease、NAT、route 等
   普通客户端网络配置。
-- SynaBoot 不得影响普通客户端 DHCP、内网访问或外网访问。
+- SynaBoot 只允许响应 `PXEClient` / `HTTPClient`。
+- SynaBoot 不得响应普通非 PXE/HTTP Boot 客户端，不得影响普通客户端
+  DHCP、内网访问或外网访问。
 
 ## 未来隔离验证的观察对象
 
 未来如果进入隔离验证，只允许观察以下对象：
 
 - 测试机发出的 PXE/UEFI DHCP Discover / Request。
+- 测试机发出的 UEFI HTTP Boot `HTTPClient` 识别信息。
 - TP-Link 或隔离 DHCP server 发出的普通 DHCP lease Offer / Ack。
-- SynaBoot 候选 ProxyDHCP 仅用于 boot metadata 的响应。
+- SynaBoot 候选 Boot Metadata Proxy 仅用于 boot metadata 的响应。
 - 测试机向 Boot Server 发出的后续 PXE 请求。
 - 测试机下载已审查 boot loader 的 TFTP 请求。
 - iPXE 后续访问 SynaBoot HTTP 菜单的请求。
 
 当前生产 LAN 中不得启用这些验证行为。
 
-## 允许出现的 SynaBoot ProxyDHCP 语义
+## 允许出现的 SynaBoot Boot Metadata Proxy 语义
 
-未来隔离验证中，SynaBoot 候选 ProxyDHCP 响应只能表达 boot metadata：
+未来隔离验证中，SynaBoot 候选响应只能表达 boot metadata：
 
-- 响应对象是 PXE/UEFI boot client。
-- 响应内容只帮助测试机找到 boot server 和 bootfile。
+- 响应对象只能是 `PXEClient` / `HTTPClient`。
+- 响应内容只帮助测试机找到 boot server、bootfile 或 HTTP boot URL。
 - DHCP/BOOTP header 中 `xid` 和 `chaddr` 与客户端请求匹配。
 - `yiaddr` 必须为 `0.0.0.0`，不得表现为地址分配。
 - 可包含 PXE/EFI 识别相关信息，例如 Vendor Class、Client Architecture
@@ -95,7 +101,7 @@ docker-compose 的配置步骤，也不批准在生产 LAN 启动、监听或抓
 - DHCPNAK。
 - 可被客户端用于完成地址租约的 DHCPACK。
 - 任何网关、DNS、NAT、route、lease、地址池或普通客户端网络配置。
-- 对非 PXE/UEFI boot client 的响应。
+- 对非 `PXEClient` / `HTTPClient` 的响应。
 - 对生产 LAN 广播域内普通客户端的响应。
 - 客户端 DHCPREQUEST 选择 SynaBoot 作为普通 lease server。
 
@@ -115,9 +121,10 @@ SynaBoot 不得提供这些字段。
 
 ## PXE/UEFI 客户端识别
 
-未来隔离验证必须证明 SynaBoot 候选 ProxyDHCP 至少能区分：
+未来隔离验证必须证明 SynaBoot 候选 Boot Metadata Proxy 至少能区分：
 
-- PXE/UEFI boot client。
+- `PXEClient`。
+- `HTTPClient`。
 - 普通 DHCP client。
 - BIOS PXE、UEFI PXE 或其它架构差异。
 
@@ -139,10 +146,12 @@ SynaBoot 不得提供这些字段。
 - SynaBoot 没有分配 IP。
 - SynaBoot 没有下发 router、gateway、DNS、subnet、lease 或 route。
 - 普通客户端只接受主 DHCP 的 lease。
-- 测试 PXE/UEFI client 可被精确识别。
+- 测试 `PXEClient` / `HTTPClient` 可被精确识别。
+- 普通非 PXE/HTTP Boot 客户端没有收到 SynaBoot 响应。
 - SynaBoot 报文中 `yiaddr` 保持 `0.0.0.0`。
 - boot metadata 只指向已审查 loader 和 SynaBoot HTTP 菜单。
 - 没有生产 LAN 客户端参与验证。
+- 未来一键关闭后，UDP `67/69/4011` 无监听。
 
 ### BLOCKED
 
@@ -152,7 +161,7 @@ SynaBoot 不得提供这些字段。
 - SynaBoot 被普通客户端选为 DHCP server。
 - SynaBoot 发送可完成普通地址租约的 DHCPACK 或 DHCPNAK。
 - SynaBoot 下发网关、DNS、subnet、lease 或 route。
-- ProxyDHCP 响应对象无法限制。
+- Boot Metadata Proxy 响应对象无法限制到 `PXEClient` / `HTTPClient`。
 - TFTP 请求越出 `./data/boot/loaders` 范围。
 - 需要 host network、privileged 或生产 LAN 试跑才能继续。
 

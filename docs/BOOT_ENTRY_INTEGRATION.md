@@ -32,11 +32,12 @@ Phase 3.3 暂停，当前不得进入生产可启用设计。
 
 管理员已通过只读截图确认设备为 `TL-ER6120T`，硬件版本为
 `TL-ER6120T 1.0`，当前固件为 `1.2.2 Build 240829 Rel.84642n`。
-但管理员当前未在管理界面中找到 DHCP Option `66/67` 或等价 boot option
-配置入口，因此 Phase 3.3 默认不依赖主路由 DHCP Option 路线。
+管理员已确认当前设备不能下发本项目所需的 PXE/HTTP Boot 启动元数据，
+因此 Phase 3.3 默认不依赖主路由 DHCP Option 路线。
 
-下一步只允许转入受控 ProxyDHCP 可行性评估，且不代表允许实现或启用
-ProxyDHCP、TFTP 或任何 DHCP 服务。
+下一步只允许转入 Boot Metadata Proxy 可行性评估，且不代表允许实现或
+启用 ProxyDHCP、TFTP 或任何 DHCP 服务。Boot Metadata Proxy 只能补齐
+启动元数据，不得接管 DHCP、DNS、默认网关或普通网络配置。
 
 评估记录见 `PROXYDHCP_FEASIBILITY.md`；未来隔离验证的报文字段判读标准见
 `PROXYDHCP_PACKET_REVIEW.md`；TFTP loader 文件范围见

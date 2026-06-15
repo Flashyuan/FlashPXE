@@ -1898,6 +1898,7 @@ def ubuntu_xorriso_readme(job_id: str) -> str:
 
 
 def network_safety_status() -> dict:
+    boot_metadata_proxy = phase3_3a_boot_metadata_proxy_feasibility()
     return {
         "status": "APPROVED_SCOPE",
         "server_ip": SERVER_IP,
@@ -1912,10 +1913,19 @@ def network_safety_status() -> dict:
             "model_phase": "3.1",
             "display_phase": "3.4",
             "status": "router_option_path_not_recommended_but_blocked",
-            "allowed_next_step": "controlled_proxydhcp_feasibility_evaluation_only",
+            "allowed_next_step": "controlled_boot_metadata_proxy_feasibility_evaluation_only",
             "implementation_allowed": False,
             "service_enablement_allowed": False,
             "production_lan_testing_allowed": False,
+            "boot_metadata_proxy": {
+                "product_name": boot_metadata_proxy["product_name"],
+                "status": boot_metadata_proxy["status"],
+                "read_only": boot_metadata_proxy["read_only"],
+                "runtime_enabled": boot_metadata_proxy["runtime_enabled"],
+                "implementation_allowed": boot_metadata_proxy["implementation_allowed"],
+                "production_lan_allowed": boot_metadata_proxy["production_lan_allowed"],
+                "product_promise": boot_metadata_proxy["product_promise"],
+            },
         },
     }
 
@@ -2374,6 +2384,155 @@ def pxe_lab_boot_metadata_plan(loaders: list[dict]) -> dict:
             "network_safety_agent approves an isolated lab boundary.",
             "security_audit_agent approves any future service implementation.",
             "project_decision_agent authorizes lab-only runtime validation.",
+        ],
+    }
+
+
+def phase3_3a_boot_metadata_proxy_feasibility() -> dict:
+    """Phase 3.3-A 只读产品边界，不代表任何运行时授权。"""
+    return {
+        "schema_version": "phase3.3a-boot-metadata-proxy-feasibility.v1",
+        "phase": "3.3-A",
+        "product_name": "Boot Metadata Proxy",
+        "alternate_names": ["PXE/HTTP Boot Metadata Proxy", "ProxyDHCP metadata-only candidate", "ProxyNet-like metadata supplement"],
+        "status": "documentation_only_blocked",
+        "mode": "feasibility_only",
+        "read_only": True,
+        "implementation_allowed": False,
+        "runtime_enabled": False,
+        "service_enablement_allowed": False,
+        "config_generation_allowed": False,
+        "write_api_available": False,
+        "production_lan_allowed": False,
+        "production_lan_testing_allowed": False,
+        "dhcp_server_allowed": False,
+        "dhcp_lease_assignment_allowed": False,
+        "proxy_dhcp_allowed": False,
+        "tftp_allowed": False,
+        "udp_67_open": False,
+        "udp_69_open": False,
+        "udp_4011_open": False,
+        "router_mutation_allowed": False,
+        "gateway_mutation_allowed": False,
+        "firewall_mutation_allowed": False,
+        "dns_mutation_allowed": False,
+        "docker_network_mutation_allowed": False,
+        "product_promise": [
+            "SynaBoot 可以补齐路由器无法下发 PXE/HTTP Boot 启动元数据的缺口。",
+            "SynaBoot 不得接管 DHCP、DNS、默认网关或普通网络配置。",
+            "该能力只允许响应 PXEClient / HTTPClient，并只返回 bootfile、next-server 或 HTTP boot URL。",
+            "必须隔离实验通过，必须一键关闭，生产 LAN 启用前必须由用户二次确认。",
+        ],
+        "confirmed_facts": [
+            "管理员已确认当前 TP-Link TL-ER6120T 不支持下发所需 PXE/HTTP Boot 启动元数据。",
+            "当前项目 HTTP 菜单仍通过 18080/tcp 提供。",
+            "当前 API 状态没有启用 DHCP、ProxyDHCP、TFTP 或 UDP boot service。",
+        ],
+        "missing_facts": [
+            "隔离实验网络边界尚未记录。",
+            "PXEClient / HTTPClient 报文识别证据尚未采集。",
+            "SynaBoot 不发送 lease、router、DNS、lease time 的抓包证据尚未采集。",
+            "一键关闭和回滚脚本尚未进入可执行实现阶段。",
+        ],
+        "blocked_by": [
+            "Phase 3.3-A 当前只允许文档、只读 API、只读 UI 和只读预检。",
+            "尚无隔离实验验证、网络安全审查、安全审计、项目决策授权和用户生产二次确认。",
+        ],
+        "required_approvals": [
+            "research_agent",
+            "network_safety_agent",
+            "security_audit_agent",
+            "project_decision_agent",
+            "user_manual_isolated_lab_confirmation",
+            "user_production_lan_second_confirmation",
+        ],
+        "candidate_modes": [
+            {
+                "id": "proxy_dhcp_metadata_only",
+                "label": "ProxyDHCP metadata-only",
+                "allowed_now": False,
+                "future_scope": "isolated_lab_only_after_approval",
+                "assigns_ip_leases": False,
+                "allowed_response_clients": ["PXEClient", "HTTPClient"],
+                "allowed_metadata": ["next-server", "bootfile", "HTTP boot URL"],
+            },
+            {
+                "id": "tftp_loader_only",
+                "label": "TFTP loader-only",
+                "allowed_now": False,
+                "future_scope": "isolated_lab_only_after_approval",
+                "root_boundary": "data/boot/loaders",
+                "allowed_files": ["snponly.efi", "ipxe.efi"],
+            },
+            {
+                "id": "http_chainload",
+                "label": "HTTP chainload",
+                "allowed_now": True,
+                "future_scope": "current_http_reference_only",
+                "menu_url": f"http://{SERVER_IP}:{SYNABOOT_PORT}/boot/menu.ipxe",
+            },
+        ],
+        "explicit_non_goals": [
+            "不实现 DHCP Server。",
+            "不替换 TP-Link DHCP lease server。",
+            "不提供网关、DNS、subnet、lease time、route 或 NAT 配置。",
+            "不响应普通非 PXE/HTTP Boot 客户端。",
+            "不修改 TP-Link、OpenWrt、交换机、AP、VLAN、DNS、路由或防火墙。",
+        ],
+        "proxy_dhcp_metadata_boundary": {
+            "responds_only_to": ["PXEClient", "HTTPClient"],
+            "allowed_fields": ["bootfile", "next-server", "HTTP boot URL", "PXE/EFI identification metadata"],
+            "forbidden_fields": [
+                "yiaddr lease",
+                "router/default gateway",
+                "DNS server",
+                "subnet mask",
+                "lease time",
+                "DHCPACK for ordinary lease",
+                "DHCPNAK",
+                "classless static route",
+            ],
+        },
+        "tftp_loader_scope": {
+            "allowed_now": False,
+            "future_root_boundary": "data/boot/loaders",
+            "future_allowlist": ["snponly.efi", "ipxe.efi"],
+            "forbidden": ["ISO", "WIM", "ESD", "IMG", "VHD", "VHDX", "directories", "symlinks", "path traversal"],
+        },
+        "packet_review_requirements": [
+            "TP-Link 或隔离 DHCP server 仍负责分配普通 IP lease。",
+            "SynaBoot 的 yiaddr 必须保持 0.0.0.0 或等价非租约语义。",
+            "SynaBoot 不发送 router、DNS、subnet、lease time 或 route。",
+            "SynaBoot 对普通 DHCP 客户端静默。",
+            "SynaBoot 只对 PXEClient / HTTPClient 返回启动元数据。",
+        ],
+        "transition_requirements": [
+            "Phase 3.3-B 只能在隔离实验网络中启动。",
+            "启用任何 UDP 67/69/4011 前必须重新获得 network_safety_agent、security_audit_agent 和 project_decision_agent 审批。",
+            "生产 LAN 启用前必须有隔离实验证据、一键关闭方案和用户二次确认。",
+        ],
+        "rollback_requirements": [
+            "必须能一键关闭未来 Boot Metadata Proxy。",
+            "关闭后 UDP 67、69、4011 必须无监听。",
+            "关闭后客户端必须回到普通 DHCP 或手动 HTTP/iPXE 启动路径。",
+            "生产 TP-Link 192.168.1.1 与 OpenWrt 192.168.1.4 不得被修改。",
+        ],
+        "evidence_requirements": [
+            "隔离实验边界说明。",
+            "PXEClient / HTTPClient 识别证据。",
+            "普通客户端无响应证据。",
+            "禁止 DHCP 字段未出现的抓包判读结论。",
+            "HTTP menu URL 到达证据。",
+            "一键关闭后的 UDP 端口关闭证据。",
+        ],
+        "related_documents": [
+            "docs/PROXYDHCP_FEASIBILITY.md",
+            "docs/PROXYDHCP_PACKET_REVIEW.md",
+            "docs/TFTP_LOADER_SCOPE.md",
+            "docs/PHASE3_ROLLBACK_CHECKLIST.md",
+            "docs/PHASE3_REVIEW_TEMPLATES.md",
+            "docs/NETWORK_SAFETY.md",
+            "docs/ARCHITECTURE.md",
         ],
     }
 
@@ -3670,12 +3829,12 @@ def boot_entry_status() -> dict:
                 "purpose": "Readonly evidence record for the TL-ER6120T constraint and Phase 3.3 gate.",
             },
             "proxydhcp_feasibility": {
-                "label": "Controlled ProxyDHCP feasibility evaluation",
+                "label": "Boot Metadata Proxy feasibility evaluation",
                 "path": "docs/PROXYDHCP_FEASIBILITY.md",
-                "purpose": "Documentation-only Phase 3.3 feasibility gate. No implementation or service enablement is approved.",
+                "purpose": "Documentation-only Phase 3.3-A feasibility gate for PXE/HTTP boot metadata. No implementation or service enablement is approved.",
             },
             "proxydhcp_packet_review": {
-                "label": "ProxyDHCP packet review checklist",
+                "label": "Boot Metadata Proxy packet review checklist",
                 "path": "docs/PROXYDHCP_PACKET_REVIEW.md",
                 "purpose": "Documentation-only field allow/deny checklist for future isolated verification.",
             },
@@ -3696,6 +3855,7 @@ def boot_entry_status() -> dict:
             },
         },
         "local_verification_template": "docs/BOOT_ENTRY_LOCAL_VERIFICATION.md",
+        "phase3_3a_boot_metadata_proxy_feasibility": phase3_3a_boot_metadata_proxy_feasibility(),
         "pxe_ipv4_readiness": pxe_ipv4_readiness(loaders),
         "pxe_lab_boot_metadata_plan": pxe_lab_boot_metadata_plan(loaders),
         "isolated_lab_boot_services_disabled_skeleton": isolated_lab_boot_services_disabled_skeleton(loaders),
@@ -3780,16 +3940,16 @@ def boot_entry_status() -> dict:
         },
         "phase3_3_gate": {
             "status": "router_option_path_not_recommended_but_blocked",
-            "reason": "TL-ER6120T identity is screenshot-confirmed, but the administrator cannot find DHCP Option 66/67 or equivalent boot option settings. Router DHCP Option path is not recommended; only controlled ProxyDHCP feasibility evaluation is allowed.",
+            "reason": "TL-ER6120T identity is screenshot-confirmed, and the administrator confirmed it cannot provide the required PXE/HTTP Boot metadata. Router DHCP Option path is not recommended; only controlled Boot Metadata Proxy feasibility evaluation is allowed.",
             "operational_assumption": "Do not rely on the main router DHCP Option 66/67 path unless later evidence proves it is available and safe.",
-            "allowed_next_step": "controlled_proxydhcp_feasibility_evaluation_only",
+            "allowed_next_step": "controlled_boot_metadata_proxy_feasibility_evaluation_only",
             "template": "docs/BOOT_ENTRY_LOCAL_VERIFICATION.md",
             "confirmed_evidence": [
                 "Router model: TP-Link TL-ER6120T.",
                 "Hardware version: TL-ER6120T 1.0.",
                 "Current firmware: 1.2.2 Build 240829 Rel.84642n.",
                 "Router UI screenshot did not show DHCP Option 66/67 or equivalent boot option settings.",
-                "Administrator currently cannot find DHCP Option 66/67 settings in the TL-ER6120T UI.",
+                "Administrator confirmed the TL-ER6120T cannot provide the required PXE/HTTP Boot metadata.",
             ],
             "missing_local_facts": [
                 "Whether TL-ER6120T exposes next-server / boot server settings in another readonly page.",
@@ -3799,7 +3959,7 @@ def boot_entry_status() -> dict:
                 "Whether firmware 1.2.3 changes boot metadata capabilities.",
             ],
             "blocked_until": [
-                "Readonly local evidence proves router boot metadata settings exist and are safe, or project_decision_agent approves continuing only with controlled ProxyDHCP feasibility evaluation.",
+                "Readonly local evidence proves router boot metadata settings exist and are safe, or project_decision_agent approves continuing only with controlled Boot Metadata Proxy feasibility evaluation.",
                 "network_safety_agent and security_audit_agent approve any future isolated validation plan.",
                 "No production LAN test, ProxyDHCP/TFTP enablement, or UDP 67/68/69/4011 exposure is requested by this API state.",
             ],
@@ -3812,7 +3972,8 @@ def boot_entry_status() -> dict:
         "phase3_3_feasibility": {
             "mode": "documentation_only",
             "status": "blocked_for_implementation",
-            "candidate": "proxydhcp_metadata_only",
+            "candidate": "boot_metadata_proxy_feasibility_only",
+            "product_name": "Boot Metadata Proxy",
             "doc": "docs/PROXYDHCP_FEASIBILITY.md",
             "packet_review_doc": "docs/PROXYDHCP_PACKET_REVIEW.md",
             "tftp_loader_scope_doc": "docs/TFTP_LOADER_SCOPE.md",

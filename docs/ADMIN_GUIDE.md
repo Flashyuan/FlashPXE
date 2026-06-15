@@ -222,10 +222,14 @@ curl http://localhost:18080/boot/menu.ipxe
 Phase 3 自动网络启动入口仍处于门禁状态。管理员只读确认清单见
 `BOOT_ENTRY_INTEGRATION.md`。
 
-当前已根据管理员截图确认主路由为 TP-Link `TL-ER6120T`，但管理员未在
-管理界面找到 DHCP Option `66/67` 或等价 boot option 配置入口。因此
+当前已根据管理员截图确认主路由为 TP-Link `TL-ER6120T`，且管理员已
+确认当前设备不能下发本项目所需的 PXE/HTTP Boot 启动元数据。因此
 默认不依赖主路由 DHCP Option 路线，后续只允许 documentation-only 的
-受控 ProxyDHCP 可行性评估。
+Boot Metadata Proxy 可行性评估。
+
+Boot Metadata Proxy 的产品承诺是：SynaBoot 可以补齐路由器无法下发
+PXE/HTTP Boot 启动元数据的缺口，但不得接管 DHCP、DNS、默认网关或
+普通网络配置。当前阶段它只作为只读规划展示，不是可启用服务。
 
 Web UI 的“启动入口”页展示本地事实门禁，“网络安全”页通过
 `/api/network-safety.phase3_gate` 同步展示 Phase 3.3 门禁。两处都只是
@@ -235,7 +239,7 @@ Web UI 的“启动入口”页展示本地事实门禁，“网络安全”页�
 只读参考文档与本文位于同一 `docs/` 目录：
 
 - `BOOT_ENTRY_LOCAL_VERIFICATION.md`：本地设备能力确认记录。
-- `PROXYDHCP_FEASIBILITY.md`：受控 ProxyDHCP 可行性评估。
+- `PROXYDHCP_FEASIBILITY.md`：Boot Metadata Proxy 可行性评估。
 - `PROXYDHCP_PACKET_REVIEW.md`：未来经审批隔离验证的报文字段判读标准。
 - `TFTP_LOADER_SCOPE.md`：未来 TFTP loader 文件范围。
 - `PHASE3_ROLLBACK_CHECKLIST.md`：Phase 3 回滚证据清单。

@@ -18,7 +18,7 @@ API_MAIN = ROOT / "apps" / "api" / "main.py"
 PHASE3_SOURCE_SKELETON_FIXTURE = ROOT / "config" / "synaboot" / "phase3.13-isolated-lab-source-skeleton.disabled.json"
 
 EXPECTED_STATUS = "router_option_path_not_recommended_but_blocked"
-EXPECTED_NEXT_STEP = "controlled_proxy" + "d" + "hcp_feasibility_evaluation_only"
+EXPECTED_NEXT_STEP = "controlled_boot_metadata_proxy_feasibility_evaluation_only"
 
 
 def fail(message: str) -> None:
@@ -82,6 +82,7 @@ def main() -> int:
     entry_gate = boot_entry.get("phase3_3_gate", {})
     safety_gate = network_safety.get("phase3_gate", {})
     feasibility = boot_entry.get("phase3_3_feasibility", {})
+    boot_metadata_proxy = boot_entry.get("phase3_3a_boot_metadata_proxy_feasibility", {})
     isolated_plan = boot_entry.get("isolated_validation_plan", {})
     pxe_readiness = boot_entry.get("pxe_ipv4_readiness", {})
     pxe_lab_plan = boot_entry.get("pxe_lab_boot_metadata_plan", {})
@@ -115,6 +116,74 @@ def main() -> int:
         require_false(safety_gate, key, "network-safety.phase3_gate")
         require_false(feasibility, key, "boot-entry.phase3_3_feasibility")
         require_false(isolated_plan, key, "boot-entry.isolated_validation_plan")
+
+    require(
+        boot_metadata_proxy.get("schema_version") == "phase3.3a-boot-metadata-proxy-feasibility.v1",
+        "phase3_3a_boot_metadata_proxy_feasibility schema mismatch",
+    )
+    require(
+        boot_metadata_proxy.get("status") == "documentation_only_blocked",
+        "phase3_3a_boot_metadata_proxy_feasibility status mismatch",
+    )
+    require(
+        boot_metadata_proxy.get("product_name") == "Boot Metadata Proxy",
+        "phase3_3a_boot_metadata_proxy_feasibility product name mismatch",
+    )
+    for key in (
+        "read_only",
+    ):
+        require(boot_metadata_proxy.get(key) is True, f"phase3_3a_boot_metadata_proxy_feasibility.{key} must be true")
+    for key in (
+        "implementation_allowed",
+        "runtime_enabled",
+        "service_enablement_allowed",
+        "config_generation_allowed",
+        "write_api_available",
+        "production_lan_allowed",
+        "production_lan_testing_allowed",
+        "d" + "hcp_server_allowed",
+        "d" + "hcp_lease_assignment_allowed",
+        "proxy_" + "d" + "hcp_allowed",
+        "tf" + "tp_allowed",
+        "udp_67_open",
+        "udp_69_open",
+        "udp_4011_open",
+        "router_mutation_allowed",
+        "gateway_mutation_allowed",
+        "firewall_mutation_allowed",
+        "dns_mutation_allowed",
+        "docker_network_mutation_allowed",
+    ):
+        require_false(boot_metadata_proxy, key, "boot-entry.phase3_3a_boot_metadata_proxy_feasibility")
+    for key in (
+        "product_promise",
+        "confirmed_facts",
+        "missing_facts",
+        "blocked_by",
+        "required_approvals",
+        "candidate_modes",
+        "explicit_non_goals",
+        "packet_review_requirements",
+        "transition_requirements",
+        "rollback_requirements",
+        "evidence_requirements",
+        "related_documents",
+    ):
+        require(
+            isinstance(boot_metadata_proxy.get(key), list) and bool(boot_metadata_proxy[key]),
+            f"phase3_3a_boot_metadata_proxy_feasibility.{key} must be a non-empty list",
+        )
+    promise_text = " ".join(boot_metadata_proxy.get("product_promise", []))
+    for token in ("PXE/HTTP Boot", "DHCP", "DNS", "PXEClient", "HTTPClient", "二次确认"):
+        require(token in promise_text, f"phase3_3a product promise must mention {token}")
+    boundary = boot_metadata_proxy.get("proxy_dhcp_metadata_boundary", {})
+    require(
+        set(boundary.get("responds_only_to", [])) == {"PXEClient", "HTTPClient"},
+        "phase3_3a must respond only to PXEClient and HTTPClient",
+    )
+    forbidden_boundary_text = " ".join(boundary.get("forbidden_fields", []))
+    for token in ("router", "DNS", "lease", "DHCPACK", "DHCPNAK"):
+        require(token in forbidden_boundary_text, f"phase3_3a forbidden boundary must mention {token}")
 
     require(pxe_readiness.get("schema_version") == "pxe-ipv4-readiness.v1", "pxe_ipv4_readiness schema mismatch")
     require(pxe_readiness.get("mode") == "readonly_summary_only", "pxe_ipv4_readiness mode mismatch")

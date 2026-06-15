@@ -1719,6 +1719,33 @@ Phase 3 的目标是让用户在主板启动菜单中选择以下入口时，能
 - 所有网络启动变更必须先有回滚步骤，并在维护窗口中执行。
 - 任何变更不得影响普通终端继续获取 IP、访问网关、访问互联网和访问内网服务。
 
+Phase 3 产品承诺：
+
+```text
+SynaBoot 可以补齐路由器无法下发 PXE/HTTP Boot 启动元数据的缺口，
+但不得接管 DHCP、DNS、默认网关或普通网络配置。
+```
+
+该能力在产品上命名为 **Boot Metadata Proxy** 或
+**PXE/HTTP Boot Metadata Proxy**，不得命名或实现为普通 DHCP Server。
+它只允许补充启动信息：
+
+- 识别 `PXEClient` / `HTTPClient`。
+- 返回 `next-server`、`bootfile` 或 HTTP boot URL。
+- 配合受控 TFTP 仅提供 iPXE/UEFI loader 白名单文件。
+
+它必须禁止：
+
+- 分配 IP 或提供 DHCP lease。
+- 提供 router/default gateway option。
+- 提供 DNS option。
+- 提供 lease time。
+- 响应普通非 PXE/HTTP Boot DHCP 客户端。
+- 修改 TP-Link、OpenWrt、交换机、AP、VLAN、DNS、路由或防火墙。
+
+该能力必须默认关闭，必须先通过隔离实验，必须具备一键关闭能力，
+生产 LAN 启用前必须再次由用户明确二次确认。
+
 ### 21.0 Phase 3 前置调查门禁
 
 Phase 3 不允许从假设直接进入设计或实现。所有外部事实不确定的问题，必须先交给 `research_agent` 调查并输出证据包，再由对应 agent 继续设计。
@@ -1750,6 +1777,9 @@ Phase 3 不允许从假设直接进入设计或实现。所有外部事实不确
 
 - 若 TP-Link 能完整提供 PXE 所需 boot server + bootfile，并且不会改变租约、DNS、网关，则优先走主路由 DHCP Boot Option 模式。
 - 若 TP-Link 只支持 Option 66、不支持 Option 67/next-server，或 PXE 客户端实际取错 boot server，则不强行在 TP-Link 上硬配，转入 SynaBoot 受控 ProxyDHCP 方案评估。
+- 若管理员已在当前 TL-ER6120T 上确认无法下发 PXE/HTTP Boot 启动元数据，
+  则 Phase 3 方向转为由 SynaBoot 服务器提供受控 Boot Metadata Proxy，
+  补齐路由器能力缺口；该结论不解除隔离实验和生产二次确认门禁。
 - 若设备能力无法确认，Phase 3 标记为 `BLOCKED`，不得启用 TFTP/ProxyDHCP，也不得修改生产 DHCP。
 
 ### 21.1 推荐实现路径
@@ -1765,8 +1795,10 @@ Phase 3 不允许从假设直接进入设计或实现。所有外部事实不确
 
 2. **SynaBoot 辅助 ProxyDHCP 模式**。
    - 仅当 TP-Link 无法按客户端类型下发 bootfile 时使用。
-   - ProxyDHCP 只回答 PXE/HTTP Boot 引导信息，不分配 IP。
-   - 必须默认关闭，启用前双审查。
+   - 产品命名统一为 Boot Metadata Proxy，强调补齐 boot metadata，
+     不接管 DHCP 租约、DNS、网关或普通网络配置。
+   - 只回答 PXE/HTTP Boot 引导信息，不分配 IP。
+   - 必须默认关闭，启用前双审查，生产 LAN 启用前必须二次确认。
 
 3. **iPXE USB/ISO/EFI 保底模式**。
    - 当某些主板固件不支持 HTTP Boot、IPv6 Boot 或 Secure Boot 阻止未签名 loader 时使用。
@@ -2121,19 +2153,20 @@ curl http://localhost:18080/api/boot-entry
        `/boot/menu.ipxe=200`、`/boot/loaders/ipxe.efi=200`、
        `/boot/loaders/=404`、非白名单 loader `404`、symlink loader `403`。
 
-4. Phase 3.3：受控 TFTP/ProxyDHCP 方案设计
+4. Phase 3.3：受控 Boot Metadata Proxy / TFTP 方案设计
    - 仅在 TP-Link DHCP boot option 能力不足或不可依赖时进入。
    - 是否进入该路径由 `project_decision_agent` 基于 `research_agent` 证据和安全审查结论决定。
    - 当前状态：ROUTER_OPTION_PATH_NOT_RECOMMENDED_BUT_BLOCKED，已由截图确认
-     TP-Link 型号、硬件版本和软件版本；管理员当前未找到 Option 66/67
-     配置入口，因此默认不依赖主路由 DHCP Option 路线，下一步仅允许进入
-     受控 ProxyDHCP 可行性评估。
+     TP-Link 型号、硬件版本和软件版本；管理员已确认当前 TL-ER6120T
+     不能下发本项目所需 PXE/HTTP Boot 启动元数据，因此默认不依赖
+     主路由 DHCP Option 路线，下一步仅允许进入 Boot Metadata Proxy
+     可行性评估。
    - 仍等待本地只读确认 next-server、Vendor Class、Client Architecture
      等 boot metadata 能力；这些缺口不会解除 Phase 3.3 门禁。
    - 本地确认记录模板：`docs/BOOT_ENTRY_LOCAL_VERIFICATION.md`。
-   - 受控 ProxyDHCP 可行性评估文档：`docs/PROXYDHCP_FEASIBILITY.md`。
+   - Boot Metadata Proxy 可行性评估文档：`docs/PROXYDHCP_FEASIBILITY.md`。
      当前仅达到 `G0_DOCUMENTATION_ONLY`，不批准实现、启用或生产 LAN 测试。
-   - ProxyDHCP 报文字段与抓包判读清单：`docs/PROXYDHCP_PACKET_REVIEW.md`。
+   - Boot Metadata Proxy 报文字段与抓包判读清单：`docs/PROXYDHCP_PACKET_REVIEW.md`。
      当前仅用于未来隔离验证的判读标准，不包含抓包或启服务命令。
    - TFTP loader 文件范围：`docs/TFTP_LOADER_SCOPE.md`。
      当前仅定义未来隔离验证的固定 loader 白名单，不包含 TFTP 服务配置。
@@ -3288,7 +3321,7 @@ docker compose down
     Ubuntu 22.04.3/24.04 ISO URL 允许进入 Linux 启动项。
   - 脚本结束后已执行 `docker compose down`。
 
-### 24.7 Phase 3.3-A：受控 ProxyDHCP 可行性评估继续保持文档阶段
+### 24.7 Phase 3.3-A：受控 Boot Metadata Proxy 可行性评估继续保持文档阶段
 
 参与 agent：
 
@@ -3303,12 +3336,28 @@ docker compose down
 
 - 为最终 `UEFI: PXE IPv4 -> SynaBoot 菜单` 做证据准备。
 - 继续保持生产 LAN 零变更。
+- 将类似 iVentoy ProxyNet 的能力抽象为 SynaBoot Boot Metadata Proxy：
+  只补齐路由器无法下发的启动元数据，不接管 DHCP、DNS、网关或普通网络配置。
+
+产品承诺：
+
+```text
+服务器可以补齐路由器做不到的 PXE/HTTP Boot 元数据能力；
+服务器不得分配 IP，不得提供网关，不得提供 DNS，
+只响应 PXEClient / HTTPClient，
+只返回 bootfile / next-server / boot URL，
+必须隔离实验通过，必须一键关闭，
+生产 LAN 启用前必须二次确认。
+```
 
 当前允许：
 
-- 文档化 ProxyDHCP metadata-only 方案。
+- 文档化 Boot Metadata Proxy / ProxyDHCP metadata-only / ProxyNet-like 方案。
 - 设计隔离实验输入、输出和报文字段判读标准。
 - 明确 TFTP loader 白名单、回滚证据和审查模板。
+- 设计 `off`、`lab`、`production-armed`、`production-enabled` 四种状态，
+  其中 `production-enabled` 必须依赖隔离实验证据和用户二次确认。
+- 设计一键关闭命令和回滚验收标准。
 
 当前禁止：
 
@@ -3316,12 +3365,20 @@ docker compose down
 - 不得开放 UDP `67/68/69/4011`。
 - 不得在生产 LAN 抓包测试或启服务。
 - 不得修改 TL-ER6120T、OpenWrt、交换机、AP、VLAN、DNS、路由、防火墙。
+- 不得把 Boot Metadata Proxy 描述成 DHCP Server 或让它发送普通 DHCP lease。
 
 进入 Phase 3.3-B 的前置条件：
 
 - 用户确认可用隔离测试网络或单机实验环境。
 - `network_safety_agent` 和 `security_audit_agent` 输出允许隔离验证的结论。
 - `project_decision_agent` 明确批准从文档阶段进入隔离验证阶段。
+- 文档中必须列明抓包验收条件：
+  - TP-Link 仍然分配 IP。
+  - OpenWrt 仍然是默认网关 `192.168.1.4`。
+  - SynaBoot 不发送 `yiaddr` 租约。
+  - SynaBoot 不发送 router、DNS、lease time。
+  - SynaBoot 对普通 DHCP 客户端静默。
+  - SynaBoot 只对 `PXEClient` / `HTTPClient` 返回启动元数据。
 
 ### 24.8 当前 Subagents 职责校对结论
 

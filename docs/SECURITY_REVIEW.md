@@ -106,8 +106,9 @@ bash -n scripts/preflight/check-network-safety.sh scripts/generate-ipxe-menu.sh 
 ## Phase 3 只读启动入口审查
 
 当前状态：只读模型审查通过；TL-ER6120T 设备身份已由截图确认，
+管理员已确认当前设备不能下发本项目所需 PXE/HTTP Boot 启动元数据；
 主路由 DHCP Option `66/67` 路线当前不推荐依赖；Phase 3.3
-继续保持 `BLOCKED`，仅允许受控 ProxyDHCP 可行性评估。
+继续保持 `BLOCKED`，仅允许 Boot Metadata Proxy 可行性评估。
 
 审查范围：
 
@@ -148,7 +149,7 @@ bash -n scripts/preflight/check-network-safety.sh scripts/generate-ipxe-menu.sh 
   因此 Phase 3.3 默认不依赖主路由 DHCP Option 路线。
 - 不能仅凭 TL-ER6120T 型号或固件版本推断 Option `66/67`、next-server、
   Vendor Class 或 Client Architecture 可用。
-- Phase 3.3 只允许继续受控 ProxyDHCP 可行性评估；不得实现、启用或测试
+- Phase 3.3 只允许继续 Boot Metadata Proxy 可行性评估；不得实现、启用或测试
   DHCP、ProxyDHCP、TFTP 或任何 UDP `67/68/69/4011` 服务。
 
 验证命令：
@@ -193,6 +194,6 @@ git diff --check
 后续门禁：
 
 - Phase 3.3 继续保持 `BLOCKED`；不得进入实现、启用或生产 LAN 测试。
-  当前下一步仅限受控 ProxyDHCP 可行性评估。
+  当前下一步仅限 Boot Metadata Proxy 可行性评估。
 - 任何 DHCP boot option、ProxyDHCP、TFTP、UDP `67/68/69/4011`、端口、Compose、路由器或网关相关变更，必须重新经过 `research_agent`、`network_safety_agent`、`security_audit_agent` 和 `project_decision_agent` 审查。
 - 本记录不批准生产 LAN 自动网络启动集成。

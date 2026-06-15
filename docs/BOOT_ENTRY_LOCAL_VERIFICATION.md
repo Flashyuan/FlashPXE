@@ -113,13 +113,13 @@ next-server 能力：不确定。该截图未显示 next-server / boot server �
 bootfile URL 能力：不确定。该截图未显示 HTTP Boot URL 字段
 Vendor Class 分流能力：不确定。该截图未显示 Vendor Class / Option 60 策略
 Client Architecture 分流能力：不确定。该截图未显示 Client Architecture / Option 93 策略
-是否足以进入隔离环境抓包验证：否。仍需只读确认 DHCP Option / boot metadata 配置能力
-运营假设：管理员当前未在 TL-ER6120T 管理界面中找到 DHCP Option 66/67 或等价 boot option 配置入口，因此 Phase 3.3 默认不依赖主路由 DHCP Option 66/67 路线
-后续方向：仅允许转入受控 ProxyDHCP 可行性评估；该方向仍不得实现、启用或测试任何 ProxyDHCP/TFTP/DHCP 服务
+是否足以进入隔离环境抓包验证：否。仍需 Boot Metadata Proxy 隔离实验边界和审批
+运营假设：管理员已确认当前 TL-ER6120T 不能下发本项目所需的 PXE/HTTP Boot 启动元数据，因此 Phase 3.3 默认不依赖主路由 DHCP Option 66/67 路线
+后续方向：仅允许转入 Boot Metadata Proxy 可行性评估；该方向仍不得实现、启用或测试任何 ProxyDHCP/TFTP/DHCP 服务
 ```
 
 该运营假设不等同于官方完整证明，也不代表已经完成隔离环境验证。
-它只用于避免继续把 Phase 3.3 规划建立在当前找不到配置入口的
+它只用于避免继续把 Phase 3.3 规划建立在当前不能满足需求的
 主路由 DHCP Option 路线上。
 
 ## 仍需补充的只读截图
@@ -167,7 +167,7 @@ Client Architecture 分流能力：不确定。该截图未显示 Client Archite
 
 在这些审查完成前，Phase 3.3 继续保持 `BLOCKED`。
 
-即使后续进入受控 ProxyDHCP 可行性评估，也必须继续满足以下条件：
+即使后续进入 Boot Metadata Proxy 可行性评估，也必须继续满足以下条件：
 
 - 不实现 ProxyDHCP。
 - 不启用 TFTP。

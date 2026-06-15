@@ -1,27 +1,49 @@
-# Phase 3.3 ProxyDHCP 可行性评估
+# Phase 3.3-A Boot Metadata Proxy 可行性评估
 
-更新时间：2026-06-12
+更新时间：2026-06-15
 
 ## 评估状态与范围
 
 ```text
-phase：3.3
+phase：3.3-A
 evaluation_status：documentation_only
-candidate：proxydhcp_metadata_only
+product_capability：Boot Metadata Proxy
+candidate：proxydhcp_metadata_only / tftp_loader_only / http_chainload
 runtime_status：BLOCKED
 implementation_allowed：false
 service_enablement_allowed：false
 production_lan_testing_allowed：false
 ```
 
-本文只记录受控 ProxyDHCP 路线的协议可行性、风险和后续门禁。
+本文只记录 SynaBoot Boot Metadata Proxy 的产品承诺、协议可行性、
+风险和后续门禁。Boot Metadata Proxy 是产品能力名；ProxyDHCP
+metadata-only 只是未来隔离实验中可能使用的协议候选之一。
 
 本文不是实施方案，不包含安装、配置、启动、端口开放、Compose 修改、
 生产 LAN 测试或路由器配置教程。
 
+## 产品承诺
+
+```text
+SynaBoot 可以补齐路由器无法下发 PXE/HTTP Boot 启动元数据的缺口，
+但不得接管 DHCP、DNS、默认网关或普通网络配置。
+```
+
+该能力只允许补充启动元数据：
+
+- 只响应 `PXEClient` / `HTTPClient`。
+- 只返回 `bootfile`、`next-server` 或 HTTP boot URL。
+- 未来若进入隔离实验，TFTP 也只能提供已审查的 iPXE/UEFI loader
+  白名单文件。
+
+该能力必须默认关闭，必须先通过隔离实验，必须具备一键关闭能力。
+生产 LAN 启用前必须由用户二次确认，并重新经过网络安全、安全审计和
+项目决策门禁。
+
 ## 硬性禁止事项
 
-- 不实现 ProxyDHCP。
+- 不实现 Boot Metadata Proxy runtime。
+- 不实现 ProxyDHCP packet responder。
 - 不启用 ProxyDHCP。
 - 不启用 TFTP。
 - 不启用任何 DHCP 服务。
@@ -47,11 +69,12 @@ production_lan_testing_allowed：false
 管理员已通过只读截图确认主路由为 `TL-ER6120T`，硬件版本为
 `TL-ER6120T 1.0`，当前软件版本为 `1.2.2 Build 240829 Rel.84642n`。
 
-管理员当前未在 TL-ER6120T 管理界面中找到 DHCP Option `66/67` 或等价
-boot option 配置入口。因此 Phase 3.3 默认不依赖主路由 DHCP Option 路线。
+管理员已确认当前 TL-ER6120T 不能下发本项目所需的 PXE/HTTP Boot
+启动元数据。因此 Phase 3.3 默认不依赖主路由 DHCP Option 路线。
 
-受控 ProxyDHCP 仅作为 metadata-only 候选方向。它的目标是补充 PXE boot
-metadata，不是替代 DHCP，不是接管地址分配，也不是修改默认网关。
+Boot Metadata Proxy 的目标是补充 PXE/HTTP Boot metadata，不是替代
+DHCP，不是接管地址分配，也不是修改默认网关。受控 ProxyDHCP 仅作为
+metadata-only 候选方向继续研究。
 
 ## 协议事实
 
@@ -79,7 +102,7 @@ metadata，不是替代 DHCP，不是接管地址分配，也不是修改默认�
 ```text
 测试机选择 UEFI: PXE IPv4
   -> 从 TP-Link TL-ER6120T 获取普通 DHCP lease
-  -> 从 SynaBoot 受控 ProxyDHCP 获取 PXE boot metadata
+  -> 从 SynaBoot Boot Metadata Proxy 获取 PXE/HTTP Boot metadata
   -> 通过 TFTP 下载已审查的 iPXE EFI loader
   -> iPXE 通过 HTTP chain 到 SynaBoot 菜单
   -> http://<SERVER_IP>:18080/boot/menu.ipxe
@@ -89,9 +112,9 @@ metadata，不是替代 DHCP，不是接管地址分配，也不是修改默认�
 
 ## 关键问题清单
 
-- ProxyDHCP 是否能只响应 PXE/UEFI boot client。
+- Boot Metadata Proxy 是否能只响应 `PXEClient` / `HTTPClient`。
 - 是否能可靠识别 `PXEClient`、`HTTPClient`、Option `93` 架构值。
-- 普通 DHCP 客户端是否会忽略 ProxyDHCP metadata。
+- 普通 DHCP 客户端是否完全收不到 SynaBoot 响应。
 - UEFI PXE IPv4 是否需要 UDP `4011` boot service request。
 - 目标机器是否只接受 TFTP first-stage NBP。
 - `ipxe.efi`、`snponly.efi` 与目标 NIC 固件是否兼容。
@@ -103,7 +126,7 @@ metadata，不是替代 DHCP，不是接管地址分配，也不是修改默认�
 - 抢答 DHCP 或误发 lease，导致双 DHCP 竞争。
 - 下发 gateway、DNS、subnet 或 lease 相关选项，污染普通客户端网络配置。
 - UDP `67/4011` 与主 DHCP 或生产广播域发生冲突。
-- ProxyDHCP 响应对象无法限制到 PXE/UEFI boot client。
+- Boot Metadata Proxy 响应对象无法限制到 PXE/HTTP Boot client。
 - TFTP root 越界或 loader 来源不可验证。
 - Secure Boot、NIC 驱动或固件实现差异导致启动失败。
 - 广播域扩散到非测试客户端。
@@ -115,18 +138,19 @@ metadata，不是替代 DHCP，不是接管地址分配，也不是修改默认�
 
 - TP-Link `192.168.1.1` 仍是唯一 DHCP lease server。
 - OpenWrt `192.168.1.4` 仍是默认网关。
-- ProxyDHCP 不分配 IP。
-- ProxyDHCP 不下发 router、DNS、subnet、lease、NAT、route 或 gateway 变更。
-- 普通客户端 DHCP 行为不变。
-- 测试客户端可被精确识别。
+- SynaBoot 不分配 IP，`yiaddr` 不表现为普通地址租约。
+- SynaBoot 不下发 router、DNS、subnet、lease time、NAT、route 或 gateway 变更。
+- SynaBoot 对普通 DHCP 客户端静默。
+- 测试客户端可被精确识别为 `PXEClient` 或 `HTTPClient`。
 - TFTP 只服务已审查 loader，且路径限制在 `./data/boot/loaders`。
 - HTTP chain 只进入 SynaBoot 菜单。
+- 一键关闭后 UDP `67/69/4011` 无监听。
 
 ## 阻塞标准
 
 出现任一情况，Phase 3.3 必须继续 `BLOCKED`：
 
-- 无法限制 ProxyDHCP 响应对象。
+- 无法限制 Boot Metadata Proxy 响应对象。
 - 需要让 SynaBoot 分配普通 DHCP lease。
 - 需要修改 TP-Link DHCP lease、DNS、网关或地址池。
 - 需要修改 OpenWrt 网关、路由、NAT、防火墙、DNS、VLAN 或 AP。
@@ -138,7 +162,7 @@ metadata，不是替代 DHCP，不是接管地址分配，也不是修改默认�
 
 ```text
 G0_DOCUMENTATION_ONLY
-  当前允许。只写评估结构、证据、风险和问题清单。
+  当前允许。只写评估结构、产品承诺、证据、风险和问题清单。
 
 G1_RESEARCH_CONFIRMED
   research_agent 确认协议与设备事实。
@@ -153,10 +177,11 @@ G4_PROJECT_DECISION_APPROVED
   project_decision_agent 决定是否进入隔离验证。
 
 G5_ISOLATED_VALIDATED
-  隔离环境抓包证明不发 lease、gateway、DNS 或其它网络污染选项。
+  隔离环境抓包证明只响应 PXEClient/HTTPClient，且不发 lease、
+  gateway、DNS 或其它网络污染选项。
 
 G6_PRODUCTION_PILOT_APPROVED
-  仍需维护窗口、回滚方案和单客户端灰度。
+  仍需维护窗口、一键关闭、回滚方案、单客户端灰度和用户二次确认。
 ```
 
 当前只达到 `G0_DOCUMENTATION_ONLY`。
@@ -165,7 +190,7 @@ G6_PRODUCTION_PILOT_APPROVED
 
 这些交付物仍必须保持只读或离线，不得启用服务：
 
-- ProxyDHCP 报文字段白名单：见 `PROXYDHCP_PACKET_REVIEW.md`。
+- Boot Metadata Proxy 报文字段白名单：见 `PROXYDHCP_PACKET_REVIEW.md`。
 - TFTP loader 文件白名单：见 `TFTP_LOADER_SCOPE.md`。
 - 隔离验证观测清单：见 `PROXYDHCP_PACKET_REVIEW.md`。
 - 抓包判读清单：见 `PROXYDHCP_PACKET_REVIEW.md`。
@@ -175,7 +200,8 @@ G6_PRODUCTION_PILOT_APPROVED
 
 ## 当前结论
 
-受控 ProxyDHCP 在协议上可作为候选方向继续研究。
+Boot Metadata Proxy 在产品方向上可以作为“补齐路由器启动元数据能力”的
+候选继续研究；受控 ProxyDHCP 只作为其中的 metadata-only 协议候选。
 
 但 Phase 3.3 运行时仍为 `BLOCKED`。没有隔离验证、网络安全审查、
 安全审计和项目决策授权前，SynaBoot 不得启用 ProxyDHCP、TFTP 或任何

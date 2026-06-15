@@ -642,6 +642,7 @@ async function renderJobDetail(jobId) {
 function renderBootEntry() {
   const documentation = bootEntry.documentation || {};
   const phaseGate = bootEntry.phase3_3_gate || {};
+  const bootMetadataProxy = bootEntry.phase3_3a_boot_metadata_proxy_feasibility || {};
   const pxeReadiness = bootEntry.pxe_ipv4_readiness || {};
   const pxeLabPlan = bootEntry.pxe_lab_boot_metadata_plan || {};
   const disabledSkeleton = bootEntry.isolated_lab_boot_services_disabled_skeleton || {};
@@ -695,6 +696,32 @@ function renderBootEntry() {
       ([label, items]) => `<article>
         <h3>${escapeHtml(label)}</h3>
         <p>${escapeHtml((items || []).join("；") || "无")}</p>
+      </article>`,
+    )
+    .join("");
+  const proxyBoundary = bootMetadataProxy.proxy_dhcp_metadata_boundary || {};
+  const proxyModes = (bootMetadataProxy.candidate_modes || [])
+    .map((mode) => `${mode.label || mode.id}: ${mode.allowed_now ? "当前允许" : "当前禁止"} / ${mode.future_scope || ""}`);
+  const bootMetadataProxyItems = [
+    ["产品名", [bootMetadataProxy.product_name || "Boot Metadata Proxy"]],
+    ["状态", [bootMetadataProxy.status || ""]],
+    ["只读", [bootMetadataProxy.read_only ? "是" : "否"]],
+    ["运行状态", [bootMetadataProxy.runtime_enabled ? "已启用" : "未启用"]],
+    ["生产 LAN", [bootMetadataProxy.production_lan_allowed ? "允许" : "禁止"]],
+    ["产品承诺", bootMetadataProxy.product_promise || []],
+    ["候选模式", proxyModes],
+    ["只响应", proxyBoundary.responds_only_to || []],
+    ["允许元数据", proxyBoundary.allowed_fields || []],
+    ["禁止字段", proxyBoundary.forbidden_fields || []],
+    ["阻塞原因", bootMetadataProxy.blocked_by || []],
+    ["下一门禁", bootMetadataProxy.transition_requirements || []],
+    ["回滚要求", bootMetadataProxy.rollback_requirements || []],
+  ];
+  document.querySelector("#boot-entry-boot-metadata-proxy").innerHTML = bootMetadataProxyItems
+    .map(
+      ([label, items]) => `<article>
+        <h3>${escapeHtml(label)}</h3>
+        <p>${escapeHtml((items || []).filter(Boolean).join("；") || "无")}</p>
       </article>`,
     )
     .join("");
