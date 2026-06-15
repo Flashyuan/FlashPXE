@@ -2521,6 +2521,33 @@ curl http://localhost:18080/api/boot-entry
      - 结论：HotPE 当前不能判定可用；在 HotPE 中选择已上传 Win11 镜像安装
        的架构路径成立，但必须先补齐 HotPE 组件并进行真实客户端启动和安装
        验证。
+   - 本轮 HotPE 启动组件准备收口（2026-06-15 后续）：
+     - 已复用 `architecture_agent`、`boot_entry_agent`、`image_factory_agent`、
+       `storage_agent`、`network_safety_agent`、`security_audit_agent`、
+       `project_decision_agent` 协作；没有新增一次性 subagent。
+     - 已新增只读 UDF 提取能力和 HotPE 本地准备脚本，可从当前 HotPE ISO
+       提取 `bootmgr`、`BCD`、`boot.sdi`、`boot.wim`。
+     - 已新增本地 `wimboot` 导入脚本，要求管理员提供已审核来源并在非公开
+       `data/metadata/wimboot-provenance/` 记录 provenance；本轮运行态使用
+       官方 iPXE/wimboot v2.9.0 发布物导入。
+     - 当前运行态已具备：
+       `pe/hotpe/wimboot`、`pe/hotpe/bootmgr`、`pe/hotpe/BCD`、
+       `pe/hotpe/boot.sdi`、`pe/hotpe/boot.wim`。
+     - `/api/hotpe-readiness` 当前返回
+       `status=ready_for_client_test`、`required_artifacts_present=true`、
+       `hotpe_menu_ready=true`、`windows_iso_candidate_count=1`、
+       `windows_via_hotpe_candidate=true`。
+     - `/boot/menu.ipxe` 当前已出现 `item hotpe` 与 `item windows_hotpe`，
+       并通过 HTTP 引用 HotPE 五件套；Win11 ISO 仍保持 HotPE 辅助安装源，
+       不生成 raw Windows ISO 直接启动项。
+     - 已验证 HotPE 五件套和 Win11 ISO 的 HTTP `200 OK`、`Content-Length`
+       与 `Accept-Ranges: bytes`；UDP `67/69/4011` 无监听。
+     - 仍未完成真实客户端证据：
+       `client_boot_test_status=not_tested`、
+       `client_install_test_status=not_tested`。下一步必须在实体/虚拟客户端中
+       手动 iPXE 启动 HotPE，并在 HotPE 内访问
+       `http://192.168.1.168:18080/images/windows/` 选择 Win11 ISO，确认安装器
+       能到达磁盘选择页。
    - 本轮 Web UI 第一轮改进：
      - Dashboard 新增“局域网装机状态一屏看清”和装机链路态势，展示 HTTP、
        iPXE 菜单、HotPE、Win11、Phase 3 门禁状态。
@@ -2925,7 +2952,8 @@ data/images/linux/ubuntu-24.04/ubuntu-24.04.3-desktop-amd64.iso
 当前平台已有镜像扫描和菜单生成框架，但 raw ISO 与可启动条目之间仍有缺口：
 
 - HotPE ISO 不能直接等价于 `wimboot` 启动目录，需要准备出
-  `wimboot`、`bootmgr`、`BCD`、`boot.sdi`、`boot.wim`。
+  `wimboot`、`bootmgr`、`BCD`、`boot.sdi`、`boot.wim`。当前运行态已通过
+  UDF 提取和本地 wimboot 导入补齐，进入 `ready_for_client_test`。
 - Ubuntu ISO 不能单独成为 iPXE Linux 启动项，需要同目录具备
   `casper/vmlinuz` 和 `casper/initrd`。
 - Windows 11 ISO 保持 HotPE 辅助安装模式，不生成通用 iPXE 直接启动项。
@@ -3010,8 +3038,8 @@ git diff --check
   - `needs_extraction`
   - `prepared`
   - `unsupported_direct_boot`
-- HotPE ISO 被识别为 `needs_extraction`，直到依赖文件齐全才生成 HotPE
-  wimboot 菜单项。
+- HotPE ISO 在依赖缺失时被识别为 `needs_extraction`；依赖齐全后标记为
+  `prepared/ready` 并生成 HotPE wimboot 菜单项。
 - Ubuntu 22.04.3 和 Ubuntu 24.04 ISO 被识别为 Linux source ISO；
   缺少 `casper/vmlinuz` 或 `casper/initrd` 时标记为 `incomplete` 或
   `needs_extraction`。
@@ -3040,8 +3068,9 @@ curl http://localhost:18080/boot/menu.ipxe
   - `missing_artifacts`
   - `next_action`
   - `readiness_detail`
-- HotPE raw ISO 标记为 `source_iso` + `needs_extraction`，缺失依赖明确为
-  `wimboot`、`bootmgr`、`BCD`、`boot.sdi`、`boot.wim`。
+- HotPE raw ISO 在缺失依赖时标记为 `source_iso` + `needs_extraction`，
+  缺失依赖明确为 `wimboot`、`bootmgr`、`BCD`、`boot.sdi`、`boot.wim`；
+  当前运行态已补齐并标记为 `source_iso` + `prepared` + `ready`。
 - Ubuntu/Linux raw ISO 标记为 `source_iso` + `needs_extraction`，缺失依赖明确为
   `casper/vmlinuz` 和 `casper/initrd`。
 - Windows ISO 标记为 `windows_source_iso` + `uses_hotpe`，不生成通用直接启动项。

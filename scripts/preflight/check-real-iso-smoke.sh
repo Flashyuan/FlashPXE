@@ -91,10 +91,15 @@ images = images_payload.get("images") or []
 by_path = {image.get("relative_path") or image.get("rel_path"): image for image in images}
 
 expected = {
-    "data/images/pe/hotpe/HotPE-V2.8.251018.iso": ("source_iso", "needs_extraction", "incomplete"),
+    "data/images/pe/hotpe/HotPE-V2.8.251018.iso": ("source_iso", "prepared", "ready"),
     "data/images/windows/win11/Win11_24H2_Pro_Chinese_Simplified_x64.iso": ("windows_source_iso", "uses_hotpe", "needs_hotpe"),
     "data/images/linux/ubuntu-22.04.3/ubuntu-22.04.3-desktop-amd64.iso": ("source_iso", "prepared", "ready"),
     "data/images/linux/ubuntu-24.04/ubuntu-24.04.3-desktop-amd64.iso": ("source_iso", "prepared", "ready"),
+    "data/images/pe/hotpe/wimboot": ("boot_artifact", "prepared", "ready"),
+    "data/images/pe/hotpe/bootmgr": ("boot_artifact", "prepared", "ready"),
+    "data/images/pe/hotpe/BCD": ("boot_artifact", "prepared", "ready"),
+    "data/images/pe/hotpe/boot.sdi": ("boot_artifact", "prepared", "ready"),
+    "data/images/pe/hotpe/boot.wim": ("boot_artifact", "prepared", "ready"),
 }
 
 for host_path, (source_role, prep_status, boot_readiness) in expected.items():
@@ -120,6 +125,23 @@ for term in blocked_menu_terms:
 for term in ("ubuntu-22.04.3-desktop-amd64.iso", "ubuntu-24.04.3-desktop-amd64.iso"):
     if term not in menu:
         raise SystemExit(f"BLOCKED: prepared Linux ISO 未进入 menu.ipxe: {term}")
+for term in ("item hotpe", ":hotpe", "pe/hotpe/wimboot", "item windows_hotpe", ":windows_hotpe"):
+    if term not in menu:
+        raise SystemExit(f"BLOCKED: HotPE/Windows via HotPE 菜单缺少 {term}")
+if "${image-url}/windows/" not in menu and "/images/windows" not in menu:
+    raise SystemExit("BLOCKED: HotPE/Windows via HotPE 菜单缺少 Windows 仓库提示")
+
+hotpe = json.loads(fetch_text("/api/hotpe-readiness"))
+if hotpe.get("status") != "ready_for_client_test":
+    raise SystemExit(f"BLOCKED: HotPE readiness status={hotpe.get('status')!r}")
+if not hotpe.get("required_artifacts_present"):
+    raise SystemExit("BLOCKED: HotPE required_artifacts_present=false")
+if not hotpe.get("windows_via_hotpe_candidate"):
+    raise SystemExit("BLOCKED: Windows via HotPE candidate=false")
+
+windows_candidates = json.loads(fetch_text("/api/windows-install-candidates"))
+if windows_candidates.get("candidate_count") != 1:
+    raise SystemExit(f"BLOCKED: Windows candidate_count={windows_candidates.get('candidate_count')!r}")
 
 images_index = fetch_text("/images/")
 if "Index of /images/" not in images_index:
@@ -128,6 +150,9 @@ if "Index of /images/" not in images_index:
 print("INFO: web_ui=ok")
 print("INFO: api_images=ok")
 print("INFO: menu_raw_iso_absent=ok")
+print("INFO: hotpe_menu=ok")
+print("INFO: hotpe_readiness=ready_for_client_test")
+print("INFO: windows_via_hotpe_candidate=ok")
 print("INFO: images_index=ok")
 PY
 

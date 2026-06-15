@@ -493,6 +493,8 @@ def next_action_for(category: str, kind: str, boot_state: str, prep_state: str, 
         return "文件已不存在，请重新扫描或放回原路径。"
     if category == "windows" and kind in {"iso", "wim", "esd"}:
         return "保留为 Windows 源镜像；HotPE 准备完成后从 HotPE 访问安装。"
+    if category == "pe" and kind == "iso" and boot_state == "ready":
+        return "HotPE 启动依赖已补齐，可通过 iPXE 菜单进入 HotPE。"
     if category == "pe" and kind == "iso":
         return "创建 HotPE ISO 准备任务，提取 wimboot、bootmgr、BCD、boot.sdi、boot.wim。"
     if category == "pe" and missing:
@@ -1369,6 +1371,11 @@ def write_prepare_package(package_dir: Path, job_id: str, kind: str, source: dic
         required_outputs = linux_required_artifacts(source["relative_path"])
         readme = ubuntu_extract_readme(job_id, source)
         script = ubuntu_extract_script(job_id, source)
+    tools = (
+        ["bsdtar", "7z", "extract-iso9660-file.py"]
+        if kind == "ubuntu-iso-extract-kernel-initrd"
+        else ["prepare-hotpe-boot-artifacts.sh", "extract-iso9660-file.py", "extract-udf-file.py"]
+    )
     manifest = {
         "job_id": job_id,
         "kind": kind,
@@ -1381,7 +1388,7 @@ def write_prepare_package(package_dir: Path, job_id: str, kind: str, source: dic
             "installs_dependencies": False,
             "destructive_disk_operations": False,
         },
-        "tools": ["bsdtar", "7z"],
+        "tools": tools,
         "tool_status": iso_extract_tool_status(),
     }
     (package_dir / "manifest.json").write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
@@ -1508,11 +1515,9 @@ def hotpe_prepare_script(job_id: str, source: dict) -> str:
     return prepare_script_common(
         job_id,
         source,
-        """for artifact in "$TARGET/wimboot" "$TARGET/bootmgr" "$TARGET/BCD" "$TARGET/boot.sdi" "$TARGET/boot.wim"; do
-  [[ ! -e "$artifact" ]] || fail "目标文件已存在，拒绝覆盖: ${artifact#$ROOT_DIR/}"
-done
+        """[[ "$TARGET_REL" == "pe/hotpe" ]] || fail "HotPE 准备任务只允许写入 data/images/pe/hotpe"
 
-fail "HotPE ISO 的 wimboot/BCD/boot.sdi/boot.wim 布局差异较大，当前任务只生成安全清单；请按 README 人工确认提取路径后再补齐文件。"
+bash "$ROOT_DIR/scripts/image-factory/prepare-hotpe-boot-artifacts.sh" "$SOURCE_REL"
 """,
     )
 
@@ -1569,15 +1574,19 @@ data/images/pe/hotpe/boot.wim
 
 当前阶段说明:
 
-- HotPE ISO 内部布局可能随版本变化，`prepare.sh` 默认不自动解包。
-- 请先人工确认 ISO 内 `bootmgr`、`BCD`、`boot.sdi`、`boot.wim` 的真实路径。
+- `prepare.sh` 会调用项目内 HotPE 准备脚本，只从固定候选路径提取
+  `bootmgr`、`BCD`、`boot.sdi`、`boot.wim`。
+- 当前已支持 HotPE UDF 布局：`bootmgr`、`Boot/bcd`、
+  `Boot/boot.sdi`、`HotPE/Boot.wim`。
+- 如果 ISO 使用其它隐藏启动镜像布局或文件不在候选路径内，脚本会 fail-fast，
+  需要管理员人工确认 ISO 内部布局。
 - `wimboot` 通常来自 iPXE/wimboot 工具文件，不一定包含在 HotPE ISO 中，需要管理员提供已审查来源。
 
 安全边界:
 
 - 原始 ISO 只读，不删除、不改写。
 - 目标文件已存在时必须拒绝覆盖。
-- 不自动安装解包工具。
+- 不自动下载或安装解包工具。
 - 不执行分区、格式化、写真实块设备、mount 宿主敏感目录等操作。
 """
 

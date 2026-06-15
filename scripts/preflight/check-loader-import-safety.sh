@@ -6,6 +6,7 @@ cd "$ROOT_DIR"
 
 SCRIPT="scripts/boot-assets/import-loader.py"
 ARCHIVE_SCRIPT="scripts/boot-assets/import-ipxe-archive.py"
+WIMBOOT_SCRIPT="scripts/boot-assets/import-wimboot.py"
 API="apps/api/main.py"
 
 fail() {
@@ -21,6 +22,7 @@ info "SynaBoot loader import safety preflight"
 
 [[ -f "$SCRIPT" ]] || fail "缺少 loader 导入脚本: ${SCRIPT}"
 [[ -f "$ARCHIVE_SCRIPT" ]] || fail "缺少 iPXE 归档导入脚本: ${ARCHIVE_SCRIPT}"
+[[ -f "$WIMBOOT_SCRIPT" ]] || fail "缺少 wimboot 导入脚本: ${WIMBOOT_SCRIPT}"
 
 python3 - <<'PY' || fail "loader 导入脚本语法错误"
 import ast
@@ -28,6 +30,7 @@ from pathlib import Path
 
 ast.parse(Path("scripts/boot-assets/import-loader.py").read_text(encoding="utf-8"))
 ast.parse(Path("scripts/boot-assets/import-ipxe-archive.py").read_text(encoding="utf-8"))
+ast.parse(Path("scripts/boot-assets/import-wimboot.py").read_text(encoding="utf-8"))
 PY
 
 for marker in \
@@ -83,6 +86,37 @@ if rg -n 'rm -rf|shutil\.rmtree|chmod\(.*0o7|chmod \+x' "$ARCHIVE_SCRIPT"; then
 fi
 
 for marker in \
+  "HOTPE_ROOT" \
+  "METADATA_ROOT" \
+  "data/images/pe/hotpe" \
+  "data/metadata" \
+  "wimboot.json" \
+  "MAX_WIMBOOT_BYTES" \
+  "os.O_EXCL" \
+  "source_sha256" \
+  "ensure_no_symlink_chain" \
+  "network_services_enabled" \
+  "tftp_enabled" \
+  "proxydhcp_enabled" \
+  "dhcp_enabled"; do
+  if ! grep -Fq "$marker" "$WIMBOOT_SCRIPT"; then
+    fail "wimboot 导入脚本缺少安全标记: ${marker}"
+  fi
+done
+
+if rg -n 'curl|wget|urlopen|requests|socket|subprocess|os\.system|Popen|docker|iptables|nft|ip route|dnsmasq|in\.tftpd|tftpd|extractall' "$WIMBOOT_SCRIPT"; then
+  fail "wimboot 导入脚本包含禁止的联网、执行、网络服务或整包解压关键字"
+fi
+
+if grep -Fq '"source_path"' "$WIMBOOT_SCRIPT"; then
+  fail "wimboot provenance 禁止记录本机绝对 source_path"
+fi
+
+if rg -n 'rm -rf|shutil\.rmtree|chmod\(.*0o7|chmod \+x' "$WIMBOOT_SCRIPT"; then
+  fail "wimboot 导入脚本包含危险删除或可执行权限逻辑"
+fi
+
+for marker in \
   "loader-metadata" \
   "reviewed_for_lab" \
   "provenance_sha256_matches" \
@@ -95,6 +129,7 @@ done
 
 info "loader_import_script=${SCRIPT}"
 info "ipxe_archive_import_script=${ARCHIVE_SCRIPT}"
+info "wimboot_import_script=${WIMBOOT_SCRIPT}"
 info "loader_import_overwrite=blocked_by_O_EXCL"
 info "loader_import_network_services=disabled"
 info "APPROVED: loader 导入流程保持本地、白名单、不可覆盖且不启用网络服务"

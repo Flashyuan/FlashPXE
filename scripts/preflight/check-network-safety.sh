@@ -81,6 +81,12 @@ allowed_disabled_keyword_context() {
         && grep -Fq '"tftp_enabled": False' "$script" \
         && grep -Fq '"proxydhcp_enabled": False' "$script"
       ;;
+    scripts/boot-assets/import-wimboot.py:tftp|scripts/boot-assets/import-wimboot.py:proxydhcp|scripts/boot-assets/import-wimboot.py:dhcp)
+      grep -Fq '"network_services_enabled": False' "$script" \
+        && grep -Fq '"dhcp_enabled": False' "$script" \
+        && grep -Fq '"proxydhcp_enabled": False' "$script" \
+        && grep -Fq '"tftp_enabled": False' "$script"
+      ;;
     scripts/preflight/check-loader-import-safety.sh:*)
       grep -Fq 'loader_import_network_services=disabled' "$script"
       ;;

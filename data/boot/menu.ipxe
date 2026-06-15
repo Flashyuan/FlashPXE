@@ -7,18 +7,32 @@ set image-url ${base-url}/images
 
 :start
 menu SynaBoot Phase 2 - HTTP/iPXE Boot
+item --gap --          === PE / Recovery ===
+item hotpe            HotPE via wimboot
 item --gap --          === Linux ===
 item linux_linux_ubuntu_22_04_3 Linux installer - linux/ubuntu-22.04.3
 item linux_linux_ubuntu_24_04 Linux installer - linux/ubuntu-24.04
+item --gap --          === Windows ===
+item windows_hotpe    Windows installation via HotPE
 item --gap --          === Tools ===
 item shell            iPXE shell
 item reboot           Reboot
 item poweroff         Power off
-choose --default linux_linux_ubuntu_22_04_3 --timeout 15000 target && goto ${target} || goto start
+choose --default hotpe --timeout 15000 target && goto ${target} || goto start
 
 :hotpe
-echo HotPE files are not enabled or not ready.
-goto start
+echo Loading HotPE...
+kernel ${image-url}/pe/hotpe/wimboot
+initrd ${image-url}/pe/hotpe/bootmgr bootmgr
+initrd ${image-url}/pe/hotpe/BCD BCD
+initrd ${image-url}/pe/hotpe/boot.sdi boot.sdi
+initrd ${image-url}/pe/hotpe/boot.wim boot.wim
+boot || goto boot_failed
+
+:windows_hotpe
+echo Windows ISO/WIM/ESD should be installed from HotPE.
+echo Boot HotPE, then open ${image-url}/windows/.
+goto hotpe
 
 :linux_linux_ubuntu_22_04_3
 echo Loading Linux installer from linux/ubuntu-22.04.3...

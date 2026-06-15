@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """从 ISO9660 镜像中只读提取单个文件。
 
-该工具只服务于 SynaBoot 的 Linux 启动依赖准备：
-从 Ubuntu/Linux ISO 中提取 casper/vmlinuz 与 casper/initrd。
+该工具只服务于 SynaBoot 的启动依赖准备：
+从可信放置在 data/images 下的 ISO 中提取白名单内的启动文件。
 它不挂载 ISO，不写目标文件以外路径，不解析或执行 ISO 内脚本。
 """
 
@@ -19,6 +19,10 @@ SECTOR_SIZE = 2048
 MAX_EXTRACT_BYTES = {
     "vmlinuz": 128 * 1024 * 1024,
     "initrd": 1024 * 1024 * 1024,
+    "bootmgr": 64 * 1024 * 1024,
+    "bcd": 16 * 1024 * 1024,
+    "boot.sdi": 256 * 1024 * 1024,
+    "boot.wim": 8 * 1024 * 1024 * 1024,
 }
 COPY_CHUNK_SIZE = 1024 * 1024
 
@@ -155,7 +159,7 @@ def extract_file(iso: Path, wanted_path: str, output: Path, allowed_root: Path) 
         validate_extent(record.extent, record.size, iso_size)
         max_size = MAX_EXTRACT_BYTES.get(Path(wanted_path).name.lower())
         if max_size is None:
-            fail("当前提取器只允许提取 vmlinuz 或 initrd")
+            fail("当前提取器只允许提取项目白名单内的启动文件")
         if record.size > max_size:
             fail("ISO 内目标文件超过安全大小上限")
         handle.seek(record.extent * SECTOR_SIZE)

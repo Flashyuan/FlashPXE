@@ -15,6 +15,11 @@ info() {
 
 info "SynaBoot public runtime boundary preflight"
 
+nginx_config="config/nginx/default.conf"
+[[ -f "$nginx_config" ]] || fail "缺少 Nginx 配置: ${nginx_config}"
+grep -Fq 'provenance\.json' "$nginx_config" || fail "Nginx 必须拒绝公开访问 provenance 文件"
+grep -Fq 'return 404;' "$nginx_config" || fail "Nginx provenance 拒绝规则必须返回 404"
+
 python3 - <<'PY'
 import ast
 import json
