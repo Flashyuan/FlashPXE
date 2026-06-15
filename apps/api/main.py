@@ -812,6 +812,125 @@ def windows_hotpe_available(rows: list[dict]) -> bool:
     )
 
 
+def readonly_image_rows_for_status() -> tuple[list[dict], str]:
+    try:
+        return list_images_readonly_snapshot(), "readonly_metadata"
+    except FileNotFoundError:
+        return [], "metadata_unavailable"
+
+
+def windows_install_candidates(rows: list[dict] | None = None) -> dict:
+    image_rows = rows if rows is not None else readonly_image_rows_for_status()[0]
+    candidates = [
+        {
+            "id": row.get("id", ""),
+            "display_name": row.get("display_name") or row.get("name", ""),
+            "relative_path": row.get("relative_path") or row.get("rel_path", ""),
+            "kind": row.get("kind", ""),
+            "url": row.get("url", ""),
+            "boot_method": row.get("boot_method", ""),
+            "boot_readiness": row.get("boot_readiness", ""),
+            "preparation_status": row.get("preparation_status", ""),
+            "hotpe_required": row.get("boot_readiness") == "needs_hotpe",
+            "direct_ipxe_supported": False,
+            "client_install_test_status": "not_tested",
+            "next_action": row.get("next_action", ""),
+        }
+        for row in image_rows
+        if row_enabled(row)
+        and row.get("category") == "windows"
+        and row.get("kind") in {"iso", "wim", "esd"}
+    ]
+    return {
+        "schema_version": "synaboot.windows-install-candidates.v1",
+        "read_only": True,
+        "direct_ipxe_supported": False,
+        "client_install_test_status": "not_tested",
+        "candidates": candidates,
+        "candidate_count": len(candidates),
+        "notes": [
+            "Windows ISO/WIM/ESD entries are treated as source media for HotPE-assisted installation.",
+            "SynaBoot does not generate a direct generic iPXE boot entry for raw Windows ISO files.",
+            "A real HotPE client must verify opening the repository URL and launching the Win11 installer.",
+        ],
+    }
+
+
+def hotpe_readiness_status() -> dict:
+    rows, source = readonly_image_rows_for_status()
+    present_paths = {row.get("relative_path") or row.get("rel_path", "") for row in rows if row.get("scan_status") == "present"}
+    required = hotpe_required_artifacts()
+    missing = [path for path in required if path not in present_paths]
+    artifacts = [
+        {
+            "path": path,
+            "present": path in present_paths,
+            "role": path.rsplit("/", 1)[-1],
+        }
+        for path in required
+    ]
+    source_isos = [
+        row
+        for row in rows
+        if row_enabled(row)
+        and row.get("category") == "pe"
+        and row.get("kind") == "iso"
+        and "pe/hotpe/" in (row.get("relative_path") or row.get("rel_path", ""))
+    ]
+    hotpe_ready = hotpe_menu_ready(rows)
+    windows = windows_install_candidates(rows)
+    windows_candidates = windows["candidates"]
+    windows_via_hotpe_candidate = hotpe_ready and bool(windows_candidates)
+    status = "ready_for_client_test" if windows_via_hotpe_candidate else "blocked_missing_hotpe_artifacts"
+    if not source_isos:
+        status = "blocked_missing_hotpe_source_iso"
+    if source == "metadata_unavailable":
+        status = "metadata_unavailable"
+    return {
+        "schema_version": "synaboot.hotpe-readiness.v1",
+        "read_only": True,
+        "source": source,
+        "status": status,
+        "hotpe_source_iso_present": bool(source_isos),
+        "hotpe_source_isos": [
+            {
+                "id": row.get("id", ""),
+                "display_name": row.get("display_name") or row.get("name", ""),
+                "relative_path": row.get("relative_path") or row.get("rel_path", ""),
+                "url": row.get("url", ""),
+                "preparation_status": row.get("preparation_status", ""),
+                "boot_readiness": row.get("boot_readiness", ""),
+                "next_action": row.get("next_action", ""),
+            }
+            for row in source_isos
+        ],
+        "required_artifacts": artifacts,
+        "required_artifacts_present": len(missing) == 0,
+        "missing_artifacts": missing,
+        "hotpe_menu_ready": hotpe_ready,
+        "windows_iso_candidates": windows_candidates,
+        "windows_iso_candidate_count": len(windows_candidates),
+        "windows_via_hotpe_candidate": windows_via_hotpe_candidate,
+        "client_boot_test_status": "not_tested",
+        "client_install_test_status": "not_tested",
+        "repository_urls": {
+            "images": f"http://{SERVER_IP}:{SYNABOOT_PORT}/images/",
+            "windows": f"http://{SERVER_IP}:{SYNABOOT_PORT}/images/windows/",
+            "hotpe": f"http://{SERVER_IP}:{SYNABOOT_PORT}/images/pe/hotpe/",
+        },
+        "next_actions": [
+            "Extract or provide wimboot, bootmgr, BCD, boot.sdi, and boot.wim under data/images/pe/hotpe/.",
+            "Regenerate menu.ipxe after HotPE artifacts are present.",
+            "Boot a real client into HotPE and verify it can open the Windows repository URL.",
+            "Inside HotPE, open the uploaded Win11 image and verify the installer reaches disk selection.",
+        ],
+        "non_goals": [
+            "This endpoint does not start DHCP, ProxyDHCP, TFTP, Samba, or any boot service.",
+            "This endpoint does not prove a real client can install Windows until client evidence is recorded.",
+        ],
+    }
+
+
 def ipxe_label(value: str) -> str:
     return re.sub(r"[^A-Za-z0-9_]+", "_", value).strip("_").lower()[:48] or "entry"
 
@@ -3901,6 +4020,10 @@ class Handler(BaseHTTPRequestHandler):
             json_response(self, 200, autoinstall_binding_plan())
         elif path == "/api/capabilities":
             json_response(self, 200, capabilities_status())
+        elif path == "/api/hotpe-readiness":
+            json_response(self, 200, hotpe_readiness_status())
+        elif path == "/api/windows-install-candidates":
+            json_response(self, 200, windows_install_candidates())
         elif path.startswith("/api/jobs/") and path.endswith("/events"):
             job_id = path.split("/")[-2]
             events = list_job_events(job_id)

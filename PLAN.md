@@ -674,6 +674,18 @@ Codex 官方支持通过 `.codex/agents/*.toml` 定义 project-scoped custom age
 - 实现镜像管理页面。
 - 实现启动菜单预览。
 - 实现任务管理页面。
+- 使用本地个人 skills 辅助 Web UI 与 API-backed 管理页面重构：
+  `design-review`、`design-taste-frontend`、`frontend-design`、`shadcn-ui`、
+  `tailwind-design-system`。
+- `design-review` 用于 UI 改动后的视觉、交互、响应式和可访问性复核；
+  需要设计评审时必须截图，不得只看代码。
+- `design-taste-frontend` 只作为反模板化、文案质量、视觉层级和响应式自检清单；
+  SynaBoot 是运维/装机管理后台，不得强行套用 landing page、portfolio 或
+  marketing hero 模式。
+- `frontend-design` 用于色彩、字体、间距、信息层级和用户可理解文案。
+- `shadcn-ui` 与 `tailwind-design-system` 只能作为可访问组件、设计 token 和
+  响应式系统参考；当前轻量静态 Web UI 未经架构决策不得擅自引入 React、
+  Tailwind、Radix、shadcn 或新构建链。
 - 不得引入公网依赖。
 - 不得上传镜像到第三方。
 
@@ -1127,6 +1139,12 @@ Web UI agent。
 - 不引入新前端框架。
 - 实现 Dashboard、镜像仓库、镜像详情、菜单预览、HotPE 指南、构建任务、网络安全页。
 - 所有写操作必须通过 admin token。
+- 后续 Web UI/网页后端联动重构必须使用本地个人 skills 作为检查框架：
+  `design-review`、`design-taste-frontend`、`frontend-design`、`shadcn-ui`、
+  `tailwind-design-system`。
+- 这些 skills 不自动授权新增依赖或迁移框架；若需要 Tailwind/shadcn/React
+  迁移，必须先由 `architecture_agent` 和 `project_decision_agent` 决策，
+  再经 `security_audit_agent` 和 `git_audit_agent` 审查。
 
 ### 16.8 image_factory_agent
 
@@ -1954,6 +1972,12 @@ Phase 3 方向决策 agent。
 - 展示 HTTP IPv4、PXE IPv4、HTTP IPv6、PXE IPv6 的就绪状态。
 - 展示应交给网络管理员的 boot URL、bootfile、next-server 参数。
 - 明确标记哪些步骤需要在 TP-Link 或外部网络设备中手动配置。
+- 复用当前固定 `webui_agent` 会话推进 Web UI/网页后端联动重构，不因小改动
+  新建同职责 agent。
+- 重构时应用本地个人 skills：
+  `design-review`、`design-taste-frontend`、`frontend-design`、`shadcn-ui`、
+  `tailwind-design-system`，但必须保持 SynaBoot 管理后台属性、LAN 安全边界和
+  当前轻量静态 UI 架构，除非另行通过架构/决策审查。
 
 #### 21.6.7 tutorial_docs_agent
 
@@ -2457,6 +2481,81 @@ curl http://localhost:18080/api/boot-entry
      - `git_audit_agent` 审计 APPROVED for free-edition stage/commit
        preparation；未发现商业代码、license、混淆产物、真实 ISO、loader、
        SQLite、`.env`、secret 或 runtime ignored data 进入免费版提交范围。
+   - 本轮 Web UI / HotPE 体验重构方向：
+     - `webui_agent`、`architecture_agent`、`project_decision_agent` 已复用
+       固定会话审查用户要求，结论一致：允许重构 Web UI、API 只读聚合层、
+       页面结构、视觉系统、菜单预览和 HotPE 引导体验。
+     - 第一轮必须保留轻量静态 HTML/CSS/JS 架构，不引入 React、Tailwind、
+       Radix、shadcn 或新构建链；这些本地 skills 只作为检查框架：
+       `design-review`、`design-taste-frontend`、`frontend-design`、
+       `shadcn-ui`、`tailwind-design-system`。
+     - HotPE / Win11 安装检查归入免费版基础装机能力；允许进入 GitHub 免费版
+       的范围是基础装机、镜像展示、HotPE 检查、Win11 基础安装链路说明、
+       只读门禁和静态 UI 美化。
+     - 不得进入免费版发布线：商业代码、license、在线激活、混淆产物、
+       商业端点、私有目录、生产 LAN 自动启动、未经授权的 UDP `67/69/4011`
+       能力。
+   - 本轮 HotPE / Win11 运行态检查：
+     - 已发现 HotPE 源 ISO：
+       `data/images/pe/hotpe/HotPE-V2.8.251018.iso`。
+     - 已发现 Win11 源 ISO：
+       `data/images/windows/win11/Win11_24H2_Pro_Chinese_Simplified_x64.iso`。
+     - 新增只读 API：`GET /api/hotpe-readiness` 与
+       `GET /api/windows-install-candidates`，只汇总现有扫描结果，不写配置、
+       不生成菜单、不启动服务。
+     - `/api/hotpe-readiness` 当前返回
+       `status=blocked_missing_hotpe_artifacts`、
+       `hotpe_source_iso_present=true`、`required_artifacts_present=false`、
+       `hotpe_menu_ready=false`、`windows_iso_candidate_count=1`、
+       `client_boot_test_status=not_tested`、
+       `client_install_test_status=not_tested`。
+     - 当前缺少 HotPE 启动组件：
+       `pe/hotpe/wimboot`、`pe/hotpe/bootmgr`、`pe/hotpe/BCD`、
+       `pe/hotpe/boot.sdi`、`pe/hotpe/boot.wim`。
+     - `/api/windows-install-candidates` 当前返回 1 个候选：
+       `windows/win11/Win11_24H2_Pro_Chinese_Simplified_x64.iso`，
+       `direct_ipxe_supported=false`，必须通过 HotPE 辅助安装。
+     - `menu.ipxe` 当前只显示两个 Ubuntu Linux ready 项；HotPE 段仍显示
+       `HotPE files are not enabled or not ready.`，Windows via HotPE 菜单项
+       尚未出现。
+     - 结论：HotPE 当前不能判定可用；在 HotPE 中选择已上传 Win11 镜像安装
+       的架构路径成立，但必须先补齐 HotPE 组件并进行真实客户端启动和安装
+       验证。
+   - 本轮 Web UI 第一轮改进：
+     - Dashboard 新增“局域网装机状态一屏看清”和装机链路态势，展示 HTTP、
+       iPXE 菜单、HotPE、Win11、Phase 3 门禁状态。
+     - 菜单页新增 iPXE 菜单摘要，区分 HotPE、Windows via HotPE 和网络服务
+       当前是否可用。
+     - HotPE 页面改为 HotPE / Win11 安装链路检查，展示源 ISO、必需组件、
+       Windows 候选镜像、HTTP 仓库地址和真实客户端验证清单。
+     - CSS 统一为更清晰的运维管理台视觉系统，保留 8px radius、明确状态色、
+       键盘 focus、移动端单列布局；已用 headless Chrome 截图检查桌面和移动端，
+       并修复移动端横向滚动。
+   - 本轮 Web UI / HotPE 收口审查：
+     - `network_safety_agent` 收口 APPROVED；确认未启用 DHCP、ProxyDHCP、
+       TFTP，未开放 UDP `67/69/4011`，未修改 TP-Link、OpenWrt、路由、
+       网关、防火墙或 DNS，未把 HotPE/Win11 状态展示变成生产 LAN 启用授权。
+     - `security_audit_agent` 收口 APPROVED；确认无 secret/token 泄漏、
+       无 raw command 注入、无写 API 越权、无路径越界、无商业实现端点、
+       无误导性 “HotPE 已可用 / Win11 已安装验证” 表述。
+     - `git_audit_agent` 审计 APPROVED for free-edition stage/commit
+       preparation；确认未发现商业代码、license、混淆产物、真实 ISO、
+       loader、SQLite、`.env`、secret 或 runtime ignored data 进入免费版
+       提交范围。
+   - 本轮验证记录：
+     - `node --check apps/web/assets/app.js`
+     - `bash scripts/preflight/check-public-runtime-boundary.sh`
+     - `PYTHONDONTWRITEBYTECODE=1 python3 scripts/preflight/check-phase3-gates.py`
+     - `bash scripts/preflight/check-subagent-governance.sh`
+     - `bash scripts/preflight/check-network-safety.sh`
+     - `bash scripts/preflight/check-compose-config-safe.sh`
+     - `bash scripts/preflight/collect-release-evidence.sh`
+     - `git diff --check`
+     - `docker compose up -d --build`
+     - HTTP `/`、`/api/hotpe-readiness`、
+       `/api/windows-install-candidates` 和 `/boot/menu.ipxe` smoke 均通过。
+     - `ss -lntu` 未显示 UDP/TCP `67/69/4011` 监听。
+     - `find apps scripts -path '*/__pycache__*' -print` 为空。
    - 单台测试机验证 UEFI PXE IPv4。
    - 验证普通终端 DHCP、网关、内网和互联网不受影响。
    - 当前状态：已创建只读文档草案；真实测试机验证等待 Phase 3.3 门禁解除。

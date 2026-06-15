@@ -16,10 +16,30 @@ Required pages:
 - Network safety status
 - Edition and capability status when commercial tiers are introduced
 
+Local design skills to apply when planning or refactoring Web UI and API-backed
+admin pages:
+- design-review: run a structured visual and interaction critique after UI
+  changes; capture screenshots when a visual review is requested or when the
+  change materially affects layout.
+- design-taste-frontend: use as an anti-slop checklist for visual hierarchy,
+  copy quality, responsive behavior, and avoiding generic AI-looking layouts.
+  SynaBoot is an operational admin surface, not a marketing landing page, so
+  apply only the relevant discipline and do not force landing-page patterns.
+- frontend-design: use for intentional palette, typography, spacing, information
+  hierarchy, and plain user-facing copy.
+- shadcn-ui: use as a reference for accessible component patterns only after
+  checking the current stack; do not introduce React, Tailwind, Radix, shadcn, or
+  other dependencies without explicit approval.
+- tailwind-design-system: use as a design-token and responsive-system reference
+  only if the project adopts Tailwind; do not migrate the static UI or add
+  Tailwind without explicit approval.
+
 Constraints:
 - No external CDN runtime dependency.
 - No uploads to third-party services.
 - Keep UI simple and maintainable.
+- Prefer the current lightweight static Web UI until a deliberate architecture
+  decision approves a frontend framework migration.
 - Raw ISO files should be shown as source media when extracted boot artifacts are missing.
 - Do not imply a raw ISO is directly bootable through iPXE when the boot entry requires extracted files.
 - Free users must still be able to complete basic image scanning, preparation guidance, menu generation, and manual iPXE/HTTP boot.

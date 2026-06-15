@@ -12,6 +12,7 @@
     "/api/capabilities",
     "/api/deployment-status",
     "/api/health",
+    "/api/hotpe-readiness",
     "/api/images",
     "/api/jobs",
     "/api/jobs/hotpe-iso-prepare",
@@ -24,7 +25,8 @@
     "/api/menu/generate",
     "/api/network-safety",
     "/api/safety",
-    "/api/scan"
+    "/api/scan",
+    "/api/windows-install-candidates"
   ],
   "allowed_api_prefixes": [
     "/api/images/",

@@ -38,11 +38,23 @@
       </header>
 
       <section id="dashboard" class="view active">
+        <div class="ops-hero">
+          <div>
+            <span class="kicker">SynaBoot Control Plane</span>
+            <h2>局域网装机状态一屏看清</h2>
+            <p>当前保持零侵入 HTTP/iPXE 模式。PXE 自动入口、ProxyDHCP 和 TFTP 仍在 Phase 3 门禁内，只展示状态，不提供启用开关。</p>
+          </div>
+          <div class="hero-status" id="dashboard-hero-status"></div>
+        </div>
         <div class="metrics">
           <article><span>Web UI</span><strong id="web-url">-</strong></article>
           <article><span>iPXE 菜单</span><strong id="menu-url">-</strong></article>
           <article><span>镜像仓库</span><strong id="images-url">-</strong></article>
           <article><span>启动就绪</span><strong id="ready-count">0</strong></article>
+        </div>
+        <div class="panel">
+          <h2>装机链路态势</h2>
+          <div id="install-flow-summary" class="flow-grid"></div>
         </div>
         <div class="panel">
           <h2>分类统计</h2>
@@ -129,6 +141,10 @@
       </section>
 
       <section id="menu" class="view">
+        <div class="panel">
+          <h2>启动菜单摘要</h2>
+          <div id="menu-visual" class="menu-visual"></div>
+        </div>
         <div class="panel split">
           <div>
             <h2>启动入口</h2>
@@ -166,17 +182,38 @@
       </section>
 
       <section id="hotpe" class="view">
-        <div class="panel prose">
-          <h2>HotPE 集成</h2>
-          <p>请将 HotPE 文件放入 <code>data/images/pe/hotpe/</code>。</p>
-          <pre>wimboot
-bootmgr
-BCD
-boot.sdi
-boot.wim</pre>
-          <p>进入 HotPE 后访问 Windows 镜像仓库：</p>
-          <p class="mono" id="windows-images-url">-</p>
-          <p>Samba 默认未启用；启用前必须重新通过网络安全审查。</p>
+        <div class="panel hotpe-header">
+          <div>
+            <span class="kicker">HotPE Assisted Windows Install</span>
+            <h2>HotPE 与 Win11 安装链路检查</h2>
+            <p>当前路径是先从 SynaBoot 启动 HotPE，再在 HotPE 内打开 Windows 镜像仓库。这里展示只读检查结果，不代表真实客户端已安装成功。</p>
+          </div>
+          <div id="hotpe-status-card" class="status-card"></div>
+        </div>
+        <div class="panel">
+          <h2>链路检查</h2>
+          <div id="hotpe-flow" class="flow-grid"></div>
+        </div>
+        <div class="panel split">
+          <div>
+            <h2>必需组件</h2>
+            <div id="hotpe-artifacts" class="check-list"></div>
+          </div>
+          <div>
+            <h2>Windows 候选镜像</h2>
+            <div id="windows-candidates" class="cards"></div>
+          </div>
+        </div>
+        <div class="panel split">
+          <div>
+            <h2>HotPE 内访问地址</h2>
+            <p class="mono" id="windows-images-url">-</p>
+            <p>Samba 默认未启用；启用前必须重新通过网络安全审查。当前建议在 HotPE 内使用 HTTP 镜像仓库地址。</p>
+          </div>
+          <div>
+            <h2>真实客户端验证</h2>
+            <div id="hotpe-client-tests" class="check-list"></div>
+          </div>
         </div>
       </section>
 

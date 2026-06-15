@@ -4,7 +4,7 @@ const titles = {
   capabilities: ["版本能力", "免费版核心能力与未来商业候选边界"],
   autoinstall: ["自动安装", "安全管理自动安装脚本草稿和变量预览"],
   menu: ["菜单预览", "当前生成的 iPXE HTTP Boot 菜单"],
-  hotpe: ["HotPE 指南", "通过 HotPE 访问 Windows 镜像仓库"],
+  hotpe: ["HotPE / Win11", "检查 HotPE 启动组件和 Windows 镜像安装链路"],
   "boot-entry": ["启动入口", "Phase 3.4 只读启动入口与本地事实门禁"],
   jobs: ["构建任务", "只生成模板与任务目录，不执行破坏性操作"],
   safety: ["网络安全", "已批准范围：仅 HTTP 18080/tcp"],
@@ -18,6 +18,9 @@ let capabilities = {};
 let safety = {};
 let deployment = {};
 let bootEntry = {};
+let hotpeReadiness = {};
+let windowsInstallCandidates = {};
+let currentMenuText = "";
 
 async function fetchJson(url) {
   const response = await fetch(url, { cache: "no-store" });
@@ -26,7 +29,19 @@ async function fetchJson(url) {
 }
 
 async function refresh() {
-  const [imageData, jobData, profileData, bindingPlanData, capabilityData, safetyData, deploymentData, bootEntryData, menuText] = await Promise.all([
+  const [
+    imageData,
+    jobData,
+    profileData,
+    bindingPlanData,
+    capabilityData,
+    safetyData,
+    deploymentData,
+    bootEntryData,
+    hotpeData,
+    windowsCandidateData,
+    menuText,
+  ] = await Promise.all([
     fetchJson("/api/images"),
     fetchJson("/api/jobs"),
     fetchJson("/api/autoinstall-profiles"),
@@ -35,6 +50,8 @@ async function refresh() {
     fetchJson("/api/network-safety"),
     fetchJson("/api/deployment-status"),
     fetchJson("/api/boot-entry"),
+    fetchJson("/api/hotpe-readiness"),
+    fetchJson("/api/windows-install-candidates"),
     fetch("/api/menu", { cache: "no-store" }).then((response) => response.text()),
   ]);
   images = imageData.images || [];
@@ -45,11 +62,16 @@ async function refresh() {
   safety = safetyData || {};
   deployment = deploymentData || {};
   bootEntry = bootEntryData || {};
+  hotpeReadiness = hotpeData || {};
+  windowsInstallCandidates = windowsCandidateData || {};
+  currentMenuText = menuText;
   document.querySelector("#menu-preview").textContent = menuText;
   applyAdminState();
   renderDashboard();
   renderRuntimeUrls();
   renderImages();
+  renderHotpeReadiness();
+  renderMenuVisual();
   renderCapabilities();
   renderAutoinstallProfiles();
   renderAutoinstallBindingPlan();
@@ -80,9 +102,34 @@ function formatSize(bytes) {
 
 function renderDashboard() {
   const categories = ["pe", "windows", "linux", "tools", "custom"];
+  const hotpeReady = hotpeReadiness.hotpe_menu_ready;
+  const windowsCount = hotpeReadiness.windows_iso_candidate_count || 0;
+  const phase3Status = bootEntry.phase3?.status || bootEntry.status || "readonly";
+  const hero = document.querySelector("#dashboard-hero-status");
+  if (hero) {
+    hero.innerHTML = [
+      ["网络模式", "零侵入 HTTP", "ok"],
+      ["HotPE", hotpeReady ? "ready" : "blocked", hotpeReady ? "ok" : "warn"],
+      ["Win11 镜像", windowsCount ? `${windowsCount} 个候选` : "未发现", windowsCount ? "ok" : "warn"],
+      ["Phase 3", phase3Status, "warn"],
+    ]
+      .map(([label, value, tone]) => `<article><span>${escapeHtml(label)}</span><strong class="${tone}">${escapeHtml(String(value))}</strong></article>`)
+      .join("");
+  }
   document.querySelector("#ready-count").textContent = images.filter(
     (image) => image.scan_status === "present" && image.boot_readiness === "ready",
   ).length;
+  const flow = document.querySelector("#install-flow-summary");
+  if (flow) {
+    flow.innerHTML = [
+      ["HTTP 服务", safety.web_url || "/", "可访问管理台与静态镜像仓库", "ok"],
+      ["iPXE 菜单", safety.menu_url || "/boot/menu.ipxe", "当前只进入 ready 镜像项", "ok"],
+      ["HotPE", hotpeReady ? "组件齐全" : "组件缺失", hotpeReady ? "可进入客户端测试" : "需要补齐 wimboot/bootmgr/BCD/boot.sdi/boot.wim", hotpeReady ? "ok" : "warn"],
+      ["Win11 安装", windowsCount ? "镜像已识别" : "无候选镜像", "必须在 HotPE 内完成真实安装验证", windowsCount ? "warn" : "warn"],
+    ]
+      .map(([title, value, detail, tone]) => flowCard(title, value, detail, tone))
+      .join("");
+  }
   const summary = document.querySelector("#category-summary");
   summary.innerHTML = categories
     .map((category) => {
@@ -90,6 +137,14 @@ function renderDashboard() {
       return `<article><span>${category}</span><strong>${count}</strong></article>`;
     })
     .join("");
+}
+
+function flowCard(title, value, detail, tone = "") {
+  return `<article class="flow-card ${escapeAttr(tone)}">
+    <span>${escapeHtml(title)}</span>
+    <strong>${escapeHtml(String(value))}</strong>
+    <p>${escapeHtml(String(detail || ""))}</p>
+  </article>`;
 }
 
 function renderRuntimeUrls() {
@@ -171,6 +226,85 @@ function renderImages() {
     }),
   );
   applyAdminState();
+}
+
+function renderHotpeReadiness() {
+  const statusCard = document.querySelector("#hotpe-status-card");
+  if (!statusCard) return;
+  const ready = hotpeReadiness.hotpe_menu_ready;
+  const sourcePresent = hotpeReadiness.hotpe_source_iso_present;
+  const windowsCount = hotpeReadiness.windows_iso_candidate_count || 0;
+  const status = hotpeReadiness.status || "unknown";
+  statusCard.innerHTML = `<span>当前状态</span>
+    <strong class="${ready ? "ok" : "warn"}">${escapeHtml(status)}</strong>
+    <p>${ready ? "HotPE 菜单已具备进入客户端测试的前置条件。" : "HotPE 还不能从 SynaBoot 菜单启动。"}</p>`;
+
+  const flow = document.querySelector("#hotpe-flow");
+  if (flow) {
+    flow.innerHTML = [
+      ["HotPE ISO", sourcePresent ? "已发现" : "缺失", sourcePresent ? "源 ISO 已在 data/images/pe/hotpe" : "请放入 HotPE ISO 并扫描", sourcePresent ? "ok" : "warn"],
+      ["启动组件", hotpeReadiness.required_artifacts_present ? "齐全" : "缺失", (hotpeReadiness.missing_artifacts || []).join("，") || "wimboot 组件已齐全", hotpeReadiness.required_artifacts_present ? "ok" : "warn"],
+      ["菜单入口", ready ? "可生成 HotPE 项" : "未进入菜单", ready ? "menu.ipxe 可以加载 HotPE" : "HotPE 段会返回菜单", ready ? "ok" : "warn"],
+      ["Win11 候选", windowsCount ? `${windowsCount} 个` : "无", "Windows 镜像只作为 HotPE 内安装源", windowsCount ? "ok" : "warn"],
+      ["客户端启动", hotpeReadiness.client_boot_test_status || "not_tested", "需要真实机器从 iPXE 进入 HotPE 后验证", "warn"],
+      ["Win11 安装", hotpeReadiness.client_install_test_status || "not_tested", "需要在 HotPE 内打开镜像并到达安装界面", "warn"],
+    ]
+      .map(([title, value, detail, tone]) => flowCard(title, value, detail, tone))
+      .join("");
+  }
+
+  const artifacts = document.querySelector("#hotpe-artifacts");
+  if (artifacts) {
+    artifacts.innerHTML = (hotpeReadiness.required_artifacts || [])
+      .map((item) => `<article class="${item.present ? "ok" : "warn"}">
+        <strong>${item.present ? "通过" : "缺失"}</strong>
+        <span>${escapeHtml(item.path || "")}</span>
+      </article>`)
+      .join("") || "<p>暂无 HotPE 组件扫描结果。</p>";
+  }
+
+  const candidates = document.querySelector("#windows-candidates");
+  if (candidates) {
+    const list = hotpeReadiness.windows_iso_candidates || windowsInstallCandidates.candidates || [];
+    candidates.innerHTML = list
+      .map((item) => `<article>
+        <h3>${escapeHtml(item.display_name || item.relative_path || "")}</h3>
+        <p><span class="badge warn">${escapeHtml(item.boot_readiness || "needs_hotpe")}</span><span class="badge">${escapeHtml(item.kind || "")}</span></p>
+        <p>${escapeHtml(item.relative_path || "")}</p>
+        <p class="mono">${escapeHtml(item.url || "")}</p>
+        <p>${escapeHtml(item.next_action || "在 HotPE 内访问镜像仓库后手动选择安装。")}</p>
+      </article>`)
+      .join("") || "<p>暂无 Windows ISO/WIM/ESD 候选镜像。</p>";
+  }
+
+  const tests = document.querySelector("#hotpe-client-tests");
+  if (tests) {
+    tests.innerHTML = [
+      ["HotPE 启动", hotpeReadiness.client_boot_test_status || "not_tested", "真实客户端进入 HotPE 桌面"],
+      ["网络访问", "not_tested", hotpeReadiness.repository_urls?.windows || ""],
+      ["镜像打开", "not_tested", "在 HotPE 内打开或挂载 Win11 ISO"],
+      ["安装器启动", "not_tested", "Win11 安装器到达磁盘选择界面"],
+    ]
+      .map(([title, status, detail]) => `<article class="warn"><strong>${escapeHtml(title)}</strong><span>${escapeHtml(status)}</span><p>${escapeHtml(detail)}</p></article>`)
+      .join("");
+  }
+}
+
+function renderMenuVisual() {
+  const target = document.querySelector("#menu-visual");
+  if (!target) return;
+  const lines = currentMenuText.split("\n");
+  const items = lines
+    .filter((line) => line.startsWith("item ") && !line.includes("--gap"))
+    .map((line) => line.replace(/^item\s+/, "").trim());
+  const hotpeMentioned = currentMenuText.includes("item hotpe");
+  const windowsMentioned = currentMenuText.includes("item windows_hotpe");
+  target.innerHTML = [
+    flowCard("菜单项", `${items.length} 个`, items.join(" / ") || "暂无可启动项", items.length ? "ok" : "warn"),
+    flowCard("HotPE", hotpeMentioned ? "已显示" : "未显示", hotpeMentioned ? "HotPE 可从菜单加载" : "HotPE 组件未齐全", hotpeMentioned ? "ok" : "warn"),
+    flowCard("Windows via HotPE", windowsMentioned ? "已显示" : "未显示", windowsMentioned ? "可跳转 HotPE 安装说明" : "等待 HotPE ready", windowsMentioned ? "ok" : "warn"),
+    flowCard("网络服务", "未启用 PXE 服务", "当前仅 HTTP 菜单，不启 DHCP/ProxyDHCP/TFTP", "warn"),
+  ].join("");
 }
 
 function renderImageDetail(image) {
