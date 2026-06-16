@@ -15,6 +15,7 @@ from urllib.parse import quote, urlparse
 
 SERVER_IP = os.environ.get("SERVER_IP", "192.168.1.168")
 SYNABOOT_PORT = int(os.environ.get("SYNABOOT_PORT", "18080"))
+SYNABOOT_NFS_SERVER = os.environ.get("SYNABOOT_NFS_SERVER", SERVER_IP)
 API_HOST = os.environ.get("SYNABOOT_API_HOST", "0.0.0.0")
 API_PORT = int(os.environ.get("SYNABOOT_API_PORT", "8000"))
 ADMIN_TOKEN = os.environ.get("SYNABOOT_ADMIN_TOKEN", "")
@@ -43,6 +44,7 @@ IMAGE_EXTENSIONS = {
     ".vhd": "image",
     ".vhdx": "image",
     ".initrd": "initrd",
+    ".squashfs": "livefs",
 }
 SPECIAL_NAMES = {
     "wimboot": "wimboot",
@@ -417,7 +419,8 @@ def linux_group_ready(rel_path: str, present: set[str]) -> bool:
     if not directory:
         return False
     has_iso = any(path.startswith(f"{directory}/") and path.lower().endswith(".iso") for path in present)
-    return has_iso and f"{directory}/casper/vmlinuz" in present and f"{directory}/casper/initrd" in present
+    has_livefs = any(path.startswith(f"{directory}/casper/") and path.endswith(".squashfs") for path in present)
+    return has_iso and f"{directory}/casper/vmlinuz" in present and f"{directory}/casper/initrd" in present and has_livefs
 
 
 def hotpe_group_ready(present: set[str]) -> bool:
@@ -454,14 +457,25 @@ def linux_required_artifacts(rel_path: str) -> list[str]:
     directory = linux_base_dir(rel_path)
     if not directory:
         return []
-    return [f"{directory}/casper/vmlinuz", f"{directory}/casper/initrd"]
+    return [
+        f"{directory}/casper/vmlinuz",
+        f"{directory}/casper/initrd",
+    ]
 
 
 def missing_artifacts_for(category: str, kind: str, rel_path: str, present: set[str]) -> list[str]:
     if category == "pe" and "pe/hotpe/" in rel_path:
         return [path for path in hotpe_required_artifacts() if path not in present]
     if category == "linux":
-        return [path for path in linux_required_artifacts(rel_path) if path not in present]
+        directory = linux_base_dir(rel_path)
+        missing = [path for path in linux_required_artifacts(rel_path) if path not in present]
+        has_livefs = bool(directory) and any(
+            path.startswith(f"{directory}/casper/") and path.endswith(".squashfs")
+            for path in present
+        )
+        if directory and not has_livefs:
+            missing.append(f"{directory}/casper/*.squashfs")
+        return missing
     return []
 
 
@@ -481,7 +495,7 @@ def source_role(category: str, kind: str, rel_path: str) -> str:
             return "source_iso"
         if category == "windows":
             return "windows_source_iso"
-    if kind in {"linux-kernel", "initrd", "wimboot", "bootmgr", "bcd", "boot-sdi", "wim"}:
+    if kind in {"linux-kernel", "initrd", "livefs", "wimboot", "bootmgr", "bcd", "boot-sdi", "wim"}:
         return "boot_artifact"
     return "repository_file"
 
@@ -510,7 +524,7 @@ def next_action_for(category: str, kind: str, boot_state: str, prep_state: str, 
     if category == "pe" and missing:
         return "等待 HotPE 启动依赖补齐：" + "，".join(missing)
     if category == "linux" and kind == "iso" and prep_state == "needs_extraction":
-        return "创建 Ubuntu/Linux ISO 准备任务，提取 casper/vmlinuz 和 casper/initrd。"
+        return "创建 Ubuntu/Linux ISO 准备任务，提取 casper/vmlinuz、casper/initrd 和 casper/filesystem.squashfs。"
     if category == "linux" and missing:
         return "等待 Linux 启动依赖补齐：" + "，".join(missing)
     if boot_state == "ready":
@@ -794,18 +808,20 @@ def linux_boot_entries(rows: list[dict]) -> list[dict]:
     ]
     for row in ready_rows:
         rel_path = row["rel_path"]
-        base = rel_path.split("/casper/", 1)[0] if "/casper/" in rel_path else rel_path.rsplit("/", 1)[0]
-        entry = entries.setdefault(base, {"base": base, "iso": None, "kernel": None, "initrd": None})
+        base = linux_base_dir(rel_path)
+        entry = entries.setdefault(base, {"base": base, "iso": None, "kernel": None, "initrd": None, "livefs": None})
         if rel_path.lower().endswith(".iso"):
             entry["iso"] = rel_path
         elif rel_path.endswith("/casper/vmlinuz"):
             entry["kernel"] = rel_path
         elif rel_path.endswith("/casper/initrd"):
             entry["initrd"] = rel_path
+        elif "/casper/" in rel_path and rel_path.endswith(".squashfs"):
+            entry["livefs"] = rel_path
     return [
         entry
         for entry in entries.values()
-        if entry.get("iso") and entry.get("kernel") and entry.get("initrd")
+        if entry.get("iso") and entry.get("kernel") and entry.get("initrd") and entry.get("livefs")
     ]
 
 
@@ -954,6 +970,14 @@ def ipxe_text(value: str) -> str:
     return SAFE_IPXE_TEXT_RE.sub("-", value).strip()[:96] or "entry"
 
 
+def nfs_boot_source(base: str) -> str:
+    # Ubuntu casper 原生支持 NFS netboot；每个发行版目录使用独立只读 export。
+    share_name = Path(base).name
+    if not share_name:
+        share_name = "ubuntu-livefs"
+    return f"{SYNABOOT_NFS_SERVER}:/{share_name}"
+
+
 def write_menu(_rows: list[dict] | None = None) -> str:
     ensure_dirs()
     rows = menu_rows(_rows)
@@ -1003,7 +1027,7 @@ def write_menu(_rows: list[dict] | None = None) -> str:
             key_prefix = f"({key}) " if key else "    "
             key_arg = f"--key {key} " if key else ""
             default_suffix = "  [default]" if default_target == entry["label"] else ""
-            lines.append(f"item {key_arg}{entry['label']:<16} {key_prefix}Boot Ubuntu/Linux - {ipxe_text(entry['base'])} [HTTP RAM fallback]{default_suffix}")
+            lines.append(f"item {key_arg}{entry['label']:<16} {key_prefix}{ipxe_text(entry['base'])}{default_suffix}")
     if not hotpe_ready and not linux_entries and not windows_ready:
         lines.extend(
             [
@@ -1065,9 +1089,10 @@ def write_menu(_rows: list[dict] | None = None) -> str:
             [
                 "",
                 f":{entry['label']}",
-                f"echo Loading Ubuntu/Linux HTTP RAM fallback from {ipxe_text(entry['base'])}...",
-                "echo This mode downloads the full ISO into client memory.",
-                f"kernel ${{base-url}}/images/{ipxe_url_path(entry['kernel'])} ip=dhcp url=${{base-url}}/images/{ipxe_url_path(entry['iso'])} ---",
+                f"echo Loading Ubuntu/Linux NFS livefs from {ipxe_text(entry['base'])}...",
+                f"echo NFS source: {nfs_boot_source(entry['base'])}",
+                "echo This mode mounts casper/*.squashfs from the read-only NFS export.",
+                f"kernel ${{base-url}}/images/{ipxe_url_path(entry['kernel'])} ip=dhcp boot=casper netboot=nfs nfsroot={nfs_boot_source(entry['base'])} ---",
                 f"initrd ${{base-url}}/images/{ipxe_url_path(entry['initrd'])}",
                 "boot || goto boot_failed",
             ]
@@ -1426,7 +1451,7 @@ def write_prepare_package(package_dir: Path, job_id: str, kind: str, source: dic
         readme = ubuntu_extract_readme(job_id, source)
         script = ubuntu_extract_script(job_id, source)
     tools = (
-        ["bsdtar", "7z", "extract-iso9660-file.py"]
+        ["prepare-linux-boot-artifacts.sh", "extract-iso9660-file.py"]
         if kind == "ubuntu-iso-extract-kernel-initrd"
         else ["prepare-hotpe-boot-artifacts.sh", "extract-iso9660-file.py", "extract-udf-file.py"]
     )
@@ -1453,16 +1478,24 @@ def write_prepare_package(package_dir: Path, job_id: str, kind: str, source: dic
 
 
 def iso_extract_tool_status() -> list[dict]:
-    tools = []
-    for name in ("bsdtar", "7z"):
-        tools.append(
-            {
-                "name": name,
-                "available": shutil.which(name) is not None,
-                "purpose": "读取 ISO 内容并提取启动依赖",
-            }
-        )
-    return tools
+    return [
+        {
+            "name": "extract-iso9660-file.py",
+            "available": (DATA_DIR.parent / "scripts" / "image-factory" / "extract-iso9660-file.py").is_file()
+            or Path("scripts/image-factory/extract-iso9660-file.py").is_file(),
+            "purpose": "读取 ISO9660 内容，并按项目白名单、路径边界和大小上限提取启动依赖",
+        },
+        {
+            "name": "bsdtar",
+            "available": shutil.which("bsdtar") is not None,
+            "purpose": "HotPE 准备任务的可选 ISO 解包工具；Ubuntu/Linux livefs 准备不再使用",
+        },
+        {
+            "name": "7z",
+            "available": shutil.which("7z") is not None,
+            "purpose": "HotPE 准备任务的可选 ISO 解包工具；Ubuntu/Linux livefs 准备不再使用",
+        },
+    ]
 
 
 def shell_single_quote(value: str) -> str:
@@ -1532,35 +1565,15 @@ TARGET_CANONICAL="$(canonical_dir_path "$ROOT_DIR/data/images" "$TARGET")" || fa
 CASPER_DIR="$TARGET_CANONICAL/casper"
 [[ ! -L "$CASPER_DIR" ]] || fail "目标 casper 目录是 symlink，拒绝写入"
 
+bash "$ROOT_DIR/scripts/image-factory/prepare-linux-boot-artifacts.sh"
+
 for artifact in "$CASPER_DIR/vmlinuz" "$CASPER_DIR/initrd"; do
-  [[ ! -e "$artifact" ]] || fail "目标文件已存在，拒绝覆盖: ${artifact#$ROOT_DIR/}"
+  [[ -f "$artifact" ]] || fail "准备后仍缺少 Ubuntu 启动文件: ${artifact#$ROOT_DIR/}"
+  [[ ! -L "$artifact" ]] || fail "准备结果是 symlink，拒绝使用: ${artifact#$ROOT_DIR/}"
 done
+compgen -G "$CASPER_DIR/*.squashfs" >/dev/null || fail "准备后仍缺少 Ubuntu livefs: ${CASPER_DIR#$ROOT_DIR/}/*.squashfs"
 
-if command -v bsdtar >/dev/null 2>&1; then
-  bsdtar -C "$WORK" -xf "$SOURCE" casper/vmlinuz casper/initrd
-elif command -v 7z >/dev/null 2>&1; then
-  7z x -y -o"$WORK" "$SOURCE" casper/vmlinuz casper/initrd >/dev/null
-else
-  fail "未找到 bsdtar 或 7z。请先由管理员安装并审查解包工具。"
-fi
-
-EXTRACTED_VMLINUX="$WORK/casper/vmlinuz"
-EXTRACTED_INITRD="$WORK/casper/initrd"
-for extracted in "$EXTRACTED_VMLINUX" "$EXTRACTED_INITRD"; do
-  [[ -e "$extracted" ]] || fail "ISO 内缺少预期文件: ${extracted#$WORK/}"
-  [[ ! -L "$extracted" ]] || fail "ISO 解包结果是 symlink，拒绝复制: ${extracted#$WORK/}"
-  [[ -f "$extracted" ]] || fail "ISO 解包结果不是普通文件，拒绝复制: ${extracted#$WORK/}"
-done
-
-mkdir -p "$CASPER_DIR"
-[[ ! -L "$CASPER_DIR" ]] || fail "目标 casper 目录是 symlink，拒绝写入"
-VMLINUX_TARGET="$(canonical_child_path "$ROOT_DIR/data/images" "$CASPER_DIR/vmlinuz")" || fail "vmlinuz 目标路径越界"
-INITRD_TARGET="$(canonical_child_path "$ROOT_DIR/data/images" "$CASPER_DIR/initrd")" || fail "initrd 目标路径越界"
-[[ ! -e "$VMLINUX_TARGET" ]] || fail "目标文件已存在，拒绝覆盖: ${VMLINUX_TARGET#$ROOT_DIR/}"
-[[ ! -e "$INITRD_TARGET" ]] || fail "目标文件已存在，拒绝覆盖: ${INITRD_TARGET#$ROOT_DIR/}"
-cp "$EXTRACTED_VMLINUX" "$VMLINUX_TARGET"
-cp "$EXTRACTED_INITRD" "$INITRD_TARGET"
-printf 'APPROVED: 已提取 casper/vmlinuz 和 casper/initrd\\n'
+printf 'APPROVED: 已准备 casper/vmlinuz、casper/initrd 和 casper/*.squashfs\\n'
 """,
     )
 
@@ -1577,7 +1590,7 @@ bash "$ROOT_DIR/scripts/image-factory/prepare-hotpe-boot-artifacts.sh" "$SOURCE_
 
 
 def ubuntu_extract_readme(job_id: str, source: dict) -> str:
-    return f"""# Ubuntu/Linux ISO kernel/initrd 准备任务
+    return f"""# Ubuntu/Linux ISO livefs 准备任务
 
 任务 ID: {job_id}
 
@@ -1592,13 +1605,14 @@ data/images/{source['relative_path']}
 ```text
 data/images/{source['target_dir']}/casper/vmlinuz
 data/images/{source['target_dir']}/casper/initrd
+data/images/{source['target_dir']}/casper/*.squashfs
 ```
 
 安全边界:
 
 - 原始 ISO 只读，不删除、不改写。
-- 如果目标文件已存在，`prepare.sh` 会直接拒绝覆盖。
-- 只使用本机已存在的 `bsdtar` 或 `7z`，不会自动安装新依赖。
+- 如果目标文件已存在，`prepare.sh` 会校验为普通文件并保留，不会覆盖。
+- Ubuntu/Linux livefs 准备强制使用项目内 ISO9660 提取器，按白名单和大小上限提取。
 - 不执行分区、格式化、写真实块设备、mount 宿主敏感目录等操作。
 
 执行前请人工审查 `manifest.json` 和 `prepare.sh`。
@@ -2301,7 +2315,7 @@ def pxe_ipv4_readiness(loaders: list[dict]) -> dict:
         "next_actions": [
             "Scan images after placing ISO files so the metadata database reflects current data/images contents.",
             "Prepare HotPE or Linux boot artifacts until at least one menu-enabled entry has boot_readiness=ready.",
-            "For Linux ISO files, run scripts/image-factory/prepare-linux-boot-artifacts.sh; it prefers bsdtar/7z and falls back to the built-in ISO9660 extractor.",
+            "For Linux ISO files, run scripts/image-factory/prepare-linux-boot-artifacts.sh; it uses the built-in ISO9660 extractor with path and size limits.",
             "Import an internally approved snponly.efi or ipxe.efi with scripts/boot-assets/import-loader.py, then verify SHA256 and provenance in /api/boot-assets.",
             "Keep Phase 3.3 blocked until isolated lab review is approved by network_safety_agent, security_audit_agent, and project_decision_agent.",
         ],

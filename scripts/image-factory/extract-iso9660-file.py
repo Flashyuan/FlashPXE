@@ -25,8 +25,14 @@ MAX_EXTRACT_BYTES = {
     "bcd": 16 * 1024 * 1024,
     "boot.sdi": 256 * 1024 * 1024,
     "boot.wim": 8 * 1024 * 1024 * 1024,
+    "install_sources.yaml": 16 * 1024 * 1024,
+    "casper-uuid": 16 * 1024 * 1024,
+    "casper-uuid-generic": 16 * 1024 * 1024,
+    "casper_uuid_generic": 16 * 1024 * 1024,
+    "info": 16 * 1024 * 1024,
 }
 COPY_CHUNK_SIZE = 1024 * 1024
+MAX_DIRECTORY_BYTES = 32 * 1024 * 1024
 
 
 @dataclass(frozen=True)
@@ -88,8 +94,10 @@ def read_extent(handle, extent: int, size: int, iso_size: int | None = None) -> 
     return data
 
 
-def iter_directory(handle, record: IsoRecord) -> list[IsoRecord]:
-    data = read_extent(handle, record.extent, record.size)
+def iter_directory(handle, record: IsoRecord, iso_size: int | None = None) -> list[IsoRecord]:
+    if record.size > MAX_DIRECTORY_BYTES:
+        fail("ISO 目录超过安全大小上限，拒绝读取")
+    data = read_extent(handle, record.extent, record.size, iso_size)
     entries: list[IsoRecord] = []
     pos = 0
     while pos < len(data):
@@ -118,10 +126,11 @@ def find_record(handle, wanted_path: str) -> IsoRecord:
     if not parts:
         fail("目标路径不能为空")
     current = root_record(handle)
+    iso_size = os.fstat(handle.fileno()).st_size
     for index, part in enumerate(parts):
         if not current.is_dir:
             fail("ISO 路径中间节点不是目录")
-        matches = [entry for entry in iter_directory(handle, current) if entry.name == part]
+        matches = [entry for entry in iter_directory(handle, current, iso_size) if entry.name == part]
         if not matches:
             fail(f"ISO 内缺少预期文件: {wanted_path}")
         current = matches[0]
@@ -130,6 +139,21 @@ def find_record(handle, wanted_path: str) -> IsoRecord:
     if current.is_dir:
         fail("目标路径是目录，不是普通文件")
     return current
+
+
+def list_dir_records(iso: Path, wanted_path: str) -> list[IsoRecord]:
+    if not iso.is_file() or iso.is_symlink():
+        fail("源 ISO 不存在、不是普通文件或是 symlink")
+    with iso.open("rb") as handle:
+        iso_size = os.fstat(handle.fileno()).st_size
+        parts = [part.lower() for part in wanted_path.strip("/").split("/") if part]
+        current = root_record(handle)
+        for part in parts:
+            matches = [entry for entry in iter_directory(handle, current, iso_size) if entry.name == part]
+            if not matches or not matches[0].is_dir:
+                fail(f"ISO 内缺少预期目录: {wanted_path}")
+            current = matches[0]
+        return iter_directory(handle, current, iso_size)
 
 
 def safe_output_path(output: Path, allowed_root: Path) -> Path:
@@ -159,7 +183,14 @@ def extract_file(iso: Path, wanted_path: str, output: Path, allowed_root: Path) 
     with iso.open("rb") as handle:
         record = find_record(handle, wanted_path)
         validate_extent(record.extent, record.size, iso_size)
-        max_size = MAX_EXTRACT_BYTES.get(Path(wanted_path).name.lower())
+        target_name = Path(wanted_path).name.lower()
+        max_size = MAX_EXTRACT_BYTES.get(target_name)
+        if max_size is None and target_name.endswith(".squashfs"):
+            max_size = 12 * 1024 * 1024 * 1024
+        if max_size is None and target_name.endswith(".manifest"):
+            max_size = 128 * 1024 * 1024
+        if max_size is None and target_name.endswith(".size"):
+            max_size = 16 * 1024 * 1024
         if max_size is None:
             fail("当前提取器只允许提取项目白名单内的启动文件")
         if record.size > max_size:
@@ -188,10 +219,20 @@ def extract_file(iso: Path, wanted_path: str, output: Path, allowed_root: Path) 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Extract one file from an ISO9660 image.")
     parser.add_argument("--iso", required=True)
-    parser.add_argument("--path", required=True)
-    parser.add_argument("--output", required=True)
-    parser.add_argument("--allowed-root", required=True)
+    parser.add_argument("--path")
+    parser.add_argument("--output")
+    parser.add_argument("--allowed-root")
+    parser.add_argument("--list-dir")
     args = parser.parse_args()
+
+    if args.list_dir:
+        for record in list_dir_records(Path(args.iso), args.list_dir):
+            kind = "dir" if record.is_dir else "file"
+            print(f"{record.name}\t{kind}\t{record.size}")
+        return 0
+
+    if not args.path or not args.output or not args.allowed_root:
+        fail("--path、--output 和 --allowed-root 必须同时提供")
 
     extract_file(
         iso=Path(args.iso),

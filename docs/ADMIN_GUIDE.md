@@ -384,7 +384,8 @@ Web UI 打不开：
 
 Ubuntu 无法启动：
 
-- 确认同一目录下有 ISO、`casper/vmlinuz`、`casper/initrd`。
+- 确认同一目录下有 ISO、`casper/vmlinuz`、`casper/initrd`、至少一个 `casper/*.squashfs`。
+- SMB/CIFS livefs 模式需要只读共享能访问到该 Ubuntu 目录；HTTP fallback 会下载整 ISO，低内存机器可能失败。
 - 查看镜像详情中的 `preparation_status`、`missing_artifacts` 和 `next_action`。
 
 Windows 无法直接启动：

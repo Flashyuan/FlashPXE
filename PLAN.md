@@ -4,6 +4,23 @@
 
 ---
 
+## 2026-06-17 实验环境启动安装结论
+
+实验环境已经验证 Windows 11、HotPE、Ubuntu 22.04.3 Desktop、Ubuntu 24.04 Desktop 均可通过 FlashPXE 进入对应安装/启动流程。正式菜单收敛为四个镜像入口，不再显示 HTTP RAM fallback 和 Diagnostics。
+
+关键结论：
+
+- Windows 安装：通过 `wimboot + Windows boot.wim` 进入安装器，SMB 仅用于进入 PE 后访问 Windows 镜像和模块目录。
+- HotPE 启动：通过 `wimboot + bootmgfw.efi + BCD + boot.sdi + boot.wim` 启动；诊断入口只保留在排错记录中，不进入正式菜单。
+- Ubuntu Desktop：通过 HTTP 加载 `casper/vmlinuz` 和 `casper/initrd`，通过只读 NFS 提供 casper livefs；不得再使用 SMB/CIFS 作为 Ubuntu livefs 来源。
+- Ubuntu Desktop NFS 目录必须包含 `.disk/casper-uuid-generic`、`.disk/info`、`casper/*.squashfs`，并保证匿名只读可读。
+- HTTP ISO RAM fallback 会在低内存客户端出现 `No space left on device`，仅可作为临时诊断，不作为正式部署路径。
+- 实验 NFS 采用独立 macvlan 地址，避免 Docker bridge/端口映射导致 NFSv3 RPC 语义不完整；真实环境建议使用独立受控 NFS 地址或单独实验网段 VM。
+
+详细复盘见：`docs/BOOT_INSTALL_ISSUES_SUMMARY.md`。
+
+---
+
 ## 0. 最高优先级安全原则
 
 本项目运行在生产办公局域网内，任何可能影响现有网络通信的行为都必须先审查、再变更、可回滚。Phase 1/2 继续保持零侵入；Phase 3 允许在明确审批后做受控网络启动集成，但不得让局域网断网，不得迁移主 DHCP，不得改变默认网关。
@@ -2709,6 +2726,11 @@ branch: codex/synaboot-phase1
   11 个角色定义，浪费 token。
 - 根因不是角色职责错误，也不是 subagent 不该用，而是缺少“已有会话如何
   复用、何时合并审计、何时才新增会话”的调度规则。
+- 2026-06-16 再次出现同类问题：主控把 `AGENTS.md` 中的 `spawn` 字面理解为
+  每次实现后都创建新的 `security_audit_agent`，并且在同一轮 BLOCKED 修复后
+  没有把修复回传给同一个审计会话，而是连续新建同职责审计会话。
+  直接根因是 `AGENTS.md` 的措辞与本节“固定会话池复用”规则不一致，且台账
+  没有把“completed 但仍可继续复审的会话应继续复用”写成硬规则。
 
 修正原则：
 
@@ -2731,6 +2753,10 @@ branch: codex/synaboot-phase1
     agent 替代。
 - 同一 milestone 内，同一角色优先复用同一个会话；需要补充信息、复测结果、
   新补丁或修复说明时，优先 `send_input` 回传给已有会话。
+- `APPROVED`、`PASS`、`BLOCKED` 或 `completed` 只代表该次输入完成，不代表该
+  角色会话必须废弃。特别是 `security_audit_agent` 返回 `BLOCKED` 后，主控
+  应本地修复并把差异、验证命令和修复说明回传给**同一个 agent_id**复审；
+  禁止因为修复了一处 BLOCKED 就新建同职责 reviewer。
 - 主控必须维护当前 milestone 的会话登记：角色名、会话状态、最后一次输入
   摘要。只有确认没有可复用会话、原会话已经结束/失效，或任务范围已经跨越
   原角色职责边界时，才允许新建对应角色会话。
@@ -2791,6 +2817,8 @@ branch: codex/synaboot-phase1
 - 禁止把“收到非阻断建议”自动升级为新一轮完整 subagent 审计。
 - 禁止在未检查可复用会话的情况下继续启动新 subagent；当用户指出 token 浪费后，
   新建会话前必须先说明为什么已有会话不能复用。
+- 禁止把 `AGENTS.md` 或旧计划中的“spawn/invoke reviewer”理解为无条件
+  `spawn_agent`。项目内所有 agent 触发语义默认都是“复用登记会话优先”。
 
 新的执行节奏：
 
@@ -2873,7 +2901,9 @@ subagents 之间不直接修改彼此输出。
 ```text
 实现完成
   → 运行验证命令
+  → 读取 docs/SUBAGENT_SESSION_POOL.md，优先复用登记的审计会话
   → security_audit_agent / network_safety_agent 按风险复审
+  → 若 BLOCKED，主控本地修复并 send_input 回同一 agent_id 复审
   → git_audit_agent 审查 diff、敏感信息、真实镜像排除状态和验证记录
   → project_decision_agent 确认阶段方向和推送范围
   → 创建本地 commit
@@ -2965,6 +2995,18 @@ subagents 之间不直接修改彼此输出。
 需要语义判断 → 复用对应 agent；无可复用会话才新建一次
 需要安全/Git 收口 → 复用 security_audit_agent + git_audit_agent；无会话才各建一次
 需要网络判断 → 才额外复用或启动 network_safety_agent
+```
+
+2026-06-16 SMB/CIFS livefs 事故修正规则：
+
+```text
+security_audit_agent 第一次 BLOCKED
+  → 主控修复 ISO 提取大小上限
+  → 必须 send_input 回同一 security_audit_agent
+  → 第二次 BLOCKED
+  → 主控继续修复目录 extent / symlink 校验
+  → 必须继续 send_input 回同一 security_audit_agent
+  → 只有同一 agent_id 不可恢复或明确 stale，才登记 stale 并替换一次
 ```
 
 ---

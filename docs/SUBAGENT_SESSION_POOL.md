@@ -91,6 +91,10 @@
 - `multi_agent_v1` 工具层当前可关停旧会话并创建 default 会话；项目 custom
   `agent_type` spawn 仍返回 child model 解析失败。本轮继续采用 default 会话
   显式绑定岗位的方式建立长期池，并在表中记录真实 `agent_id`。
+- 2026-06-16 SMB/CIFS livefs 任务中，主控没有按本文档先复用登记的
+  `security_audit_agent`，而是连续创建多个 default 安全审计会话处理同一轮
+  BLOCKED 修复。这些会话的结论可以作为本次任务证据，但不得成为新的固定池
+  会话；下次同职责审计必须先对登记会话做握手/恢复，失败后只替换一次。
 
 ## 2. 固定会话池启动协议
 
@@ -117,13 +121,15 @@
 | image_factory_agent | 镜像准备任务、模板和任务包 | ISO 准备、autoinstall 模板、任务框架 | active | 019ec02f-b31a-7cb0-a544-314d1092e227 | 负责非破坏性镜像准备任务 |
 | webui_agent | Web UI 和管理员体验 | 页面、交互、状态展示；应用 design-review、design-taste-frontend、frontend-design、shadcn-ui、tailwind-design-system 作为 UI 重构检查框架 | stale | 019ec02f-b56a-7f83-aa03-0c45c88e8e4b | 2026-06-16 send_input 返回 `agent not found`，resume 遇到线程上限；本轮不声称 webui_agent 已完成新复核 |
 | tutorial_docs_agent | 文档、教程、操作说明和交接材料 | README/指南/验收记录 | active | 019ec02f-b887-7c11-bb50-825e065706cb | 文档覆盖隔离验证、回滚和用户流程 |
-| security_audit_agent | 安全、路径、命令、Docker、secret 边界 | 安全/发布边界、脚本、输入输出 | active | 019ec02f-baba-7832-bc4a-ed9d8d696048 | 负责脚本、路径、loader、网络启动安全审计 |
+| security_audit_agent | 安全、路径、命令、Docker、secret 边界 | 安全/发布边界、脚本、输入输出 | needs_recheck | 019ec02f-baba-7832-bc4a-ed9d8d696048 | 负责脚本、路径、loader、网络启动安全审计；2026-06-16 重复创建事故后，下次复用前必须先握手验证 |
 | git_audit_agent | diff、发布范围、commit/push 就绪 | milestone 收口、commit/push 前 | active | 019ec02f-bd09-7520-88db-b57c0d35c296 | 免费版 commit/push readiness；商业代码绝不 push |
 
 状态枚举：
 
 - `pending`：本 milestone 尚未建立或握手。
 - `active`：工具层可通信，可继续 `send_input`。
+- `needs_recheck`：台账登记的固定会话仍是优先复用对象，但下次发送任务前
+  必须先 `resume_agent`/握手确认；若不可达，再登记 stale 并只替换一次。
 - `stale`：UI 可能仍显示，但工具层 `agent not found` 或不可恢复。
 - `blocked`：agent 返回 BLOCKED，等待主控修复并回传同一会话。
 - `closed`：milestone 收口后主动关闭。
@@ -143,9 +149,9 @@ architecture_agent            019ec02f-adf7-7162-8721-3b127ac3e51f  active  READ
 boot_entry_agent              019ec02f-aedd-78d0-b7ac-efb3f69b6791  active  READY
 storage_agent                 019ec02f-b120-7a92-9823-4e9f386c70ba  active  READY
 image_factory_agent           019ec02f-b31a-7cb0-a544-314d1092e227  active  READY
-webui_agent                   019ec02f-b56a-7f83-aa03-0c45c88e8e4b  active  READY
+webui_agent                   019ec02f-b56a-7f83-aa03-0c45c88e8e4b  stale   agent not found；本轮不声称已完成新复核
 tutorial_docs_agent           019ec02f-b887-7c11-bb50-825e065706cb  active  READY
-security_audit_agent          019ec02f-baba-7832-bc4a-ed9d8d696048  active  READY
+security_audit_agent          019ec02f-baba-7832-bc4a-ed9d8d696048  needs_recheck  复用前先握手；不可达时登记 stale 后只替换一次
 git_audit_agent               019ec02f-bd09-7520-88db-b57c0d35c296  active  READY
 ```
 
@@ -299,6 +305,10 @@ git_audit_agent               019ec02f-bd09-7520-88db-b57c0d35c296  active  READ
 | 2026-06-16 | security_audit_agent | 019ec02f-baba-7832-bc4a-ed9d8d696048 | send_input/wait/close | 误投递 Web UI 重构约束到安全审计会话 | 输出内容可作为 security 边界建议参考，但不得登记为 webui_agent 结论；随后关闭释放线程 | closed | 误投递原因：工具环境简表与长期台账不一致；已按台账纠正 |
 | 2026-06-16 | webui_agent | 019ec02f-b56a-7f83-aa03-0c45c88e8e4b | send_input/resume | Web UI modern admin rebuild 复用尝试 | `agent not found`，resume 受线程上限阻塞；本轮未获得 webui_agent 新结论 | stale | 后续若仍需 UI 专岗复核，必须先按重建条件替换会话并登记 |
 | 2026-06-16 | security_audit_agent | 019ec02f-baba-7832-bc4a-ed9d8d696048 | resume/send_input/wait | React/Tailwind 管理后台重构安全审计 | APPROVED；商业关键词仅用于公开版本边界展示或依赖许可证元数据；未发现 CDN runtime、secret、第三方上传、商业授权端点或 license gate | closed | `collect-release-evidence.sh` PASS；`npm audit` 0 vulnerabilities；`check-public-runtime-boundary.sh` PASS |
+| 2026-06-16 | security_audit_agent | 019ecff1-105d-7652-801d-34a918baa206 | spawn/wait | SMB/CIFS livefs 初次安全审计 | BLOCKED；指出 Linux ISO 准备脚本优先 `bsdtar/7z` 绕过项目内提取器大小上限 | completed_not_pool | 主控违反复用规则新建；本应复用登记会话或把修复回传同一会话 |
+| 2026-06-16 | network_safety_agent | 019ecff1-4eff-7750-b1b5-4ac5a1231d76 | spawn/wait | SMB/CIFS livefs 网络安全审查 | BLOCKED；SMB 本身在实验网边界内，但当前 ProxyNet lab 已监听 UDP 67/69/4011 | completed_not_pool | 主控违反复用规则新建；本应复用登记会话；需用户手动停止 ProxyNet lab 后再复验 |
+| 2026-06-16 | security_audit_agent | 019ecff6-71e9-7d93-ba84-4aeaf80538cc | spawn/wait | SMB/CIFS livefs 安全复审 1 | BLOCKED；确认 `bsdtar/7z` 问题解除，但目录 extent 和既存 `*.squashfs` symlink 校验仍不足 | completed_not_pool | 主控再次新建同职责 reviewer；本应 send_input 回 019ecff1-105d... |
+| 2026-06-16 | security_audit_agent | 019ecff9-0adb-74d0-80d2-22f7486f34ce | spawn/wait | SMB/CIFS livefs 安全复审 2 | PASS；目录 extent 大小/边界校验、既存 livefs 普通文件非 symlink 校验已闭环 | completed_not_pool | 主控第三次新建同职责 reviewer；结论可作为本任务证据，但不登记为固定池 |
 | 2026-06-15 | architecture_agent | 019ec02f-adf7-7162-8721-3b127ac3e51f | resume/send_input/wait | Web UI/PXE/HotPE 架构审查 | APPROVED with gates；允许 Web UI、API 只读聚合层、页面结构、视觉系统、菜单预览和 HotPE 引导体验重构；当前引入 React/Tailwind/shadcn 先 BLOCK；HotPE 当前可用性 BLOCKED until 组件提取和真实客户端验证 | active | 初次 send_input 返回 `agent not found`，resume 后同一 agent_id 成功接收并回复；建议新增只读 `/api/hotpe-readiness` 与 `/api/windows-install-candidates` |
 | 2026-06-15 | project_decision_agent | 019ec02f-ac76-7863-899a-3af5498ce444 | resume/send_input/wait | Web UI/PXE/HotPE 方向决策 | APPROVED，批准在现有轻量静态架构内做免费版体验重构；暂不批准引入 React/Tailwind/shadcn；HotPE/Win11 安装检查属于免费版基础装机能力 | active | 商业代码、license、在线激活、混淆产物、商业端点、私有目录、生产 LAN 自动启动和未授权 UDP 67/69/4011 能力不得进入 GitHub 免费版 |
 | 2026-06-15 | runtime | local | command | HotPE/Win11 运行态检查与第一轮 UI/API 实现 | 新增只读 `/api/hotpe-readiness`、`/api/windows-install-candidates`；Dashboard、菜单页和 HotPE 页完成第一轮静态 UI 信息架构重构；运行态显示 HotPE blocked、Win11 候选 1 个 | ready | HotPE 缺 `wimboot`、`bootmgr`、`BCD`、`boot.sdi`、`boot.wim`；`menu.ipxe` 仅显示 Ubuntu ready 项；UDP 67/69/4011 无监听；桌面/移动端截图已检查并修复横向滚动 |
@@ -357,7 +367,7 @@ git_audit_agent               019ec02f-bd09-7520-88db-b57c0d35c296  active  READ
 | image_factory_agent | 019ec02f-b31a-7cb0-a544-314d1092e227 | needs_recheck | 2 | 启动链路诊断任务误投后关闭 pending | INVALID；主控误投 Windows/HotPE wimboot 诊断任务后关闭 pending 运行态以释放线程，该条不得作为职责结论引用 | 下次使用前必须先恢复验证该固定 ID；若 not_found，按固定池协议登记 stale 后再处理 |
 | webui_agent | 019ec02f-b56a-7f83-aa03-0c45c88e8e4b | stale | 5 | Web UI modern admin rebuild 复用失败 | 旧结论只覆盖 2026-06-15 第一轮静态 UI；2026-06-16 用户已改为允许 React/Tailwind/shadcn 风格重构，但该 agent_id 已 `agent not found`，不能声称其批准新方案 | 下次需要 UI 专岗复核时，先按重建条件替换 webui_agent 会话并登记；不得因小问题重复新建 |
 | tutorial_docs_agent | 019ec02f-b887-7c11-bb50-825e065706cb | active | 1 | 固定会话池重建 | READY，负责 README、管理员教程、架构说明、安全边界、回滚、验收和未授权能力文档口径 | 改教程、交接说明、验收记录时复用 |
-| security_audit_agent | 019ec02f-baba-7832-bc4a-ed9d8d696048 | active | 7 | Phase 3.3-A Boot Metadata Proxy 安全审计收口 | APPROVED；未新增 DHCP/ProxyDHCP/TFTP runtime、写 API、配置生成、命令执行、服务启动、生产 LAN 测试或网络设备修改步骤 | 改路径、权限、脚本执行、Docker、安全边界或商业边界时复用 |
+| security_audit_agent | 019ec02f-baba-7832-bc4a-ed9d8d696048 | needs_recheck | 7 | SMB/CIFS livefs 任务暴露复用违规 | 登记 ID 仍是固定池安全岗位，但最近一次主控未先握手复用，改为连续新建 3 个同职责 reviewer；新 reviewer 结论可作为本任务证据，不可替换固定池 | 下次改路径、权限、脚本执行、Docker、安全边界或商业边界时，必须先恢复/握手此 agent_id；若不可用，登记 stale 后只替换一次 |
 | git_audit_agent | 019ec02f-bd09-7520-88db-b57c0d35c296 | active | 6 | Phase 3.3-A Boot Metadata Proxy 发布范围审计 | APPROVED；14 个 tracked 文件、暂存区为空、未提交/未 push；免费版发布边界、secret、runtime artifact、网络影响审计通过 | milestone 收口、stage/commit/push 前必须复用 |
 
 统计规则：
@@ -423,3 +433,29 @@ git_audit_agent               019ec02f-bd09-7520-88db-b57c0d35c296  active  READ
 - 用户明确要求重建。
 
 替换时只替换对应角色，不批量新开无关角色。
+
+## 10. 2026-06-16 security_audit_agent 重复创建事故
+
+事故现象：
+
+- SMB/CIFS livefs 任务中，同一安全审计链路连续创建了
+  `019ecff1-105d-7652-801d-34a918baa206`、
+  `019ecff6-71e9-7d93-ba84-4aeaf80538cc`、
+  `019ecff9-0adb-74d0-80d2-22f7486f34ce` 三个
+  `security_audit_agent` 会话。
+- 三个会话审查的是同一个 diff 的连续修复，属于应复用同一 reviewer 的场景。
+
+根因：
+
+- 主控没有先读取本台账并恢复登记的 `security_audit_agent`。
+- `AGENTS.md` 旧措辞使用 `spawn`，容易被误读成每次都新建。
+- 主控把 `completed` 当成“会话结束不可继续”，而不是“本次输入完成，可继续
+  send_input 复审”。
+
+已修复规则：
+
+- `AGENTS.md` 中的 agent 触发语义已改为 `invoke`，并明确先复用登记会话。
+- `PLAN.md` 已补充：`PASS`、`BLOCKED`、`completed` 不代表废弃会话。
+- 后续同一轮 BLOCKED 修复必须 `send_input` 回同一个 `agent_id`。
+- 只有原会话 `agent not found`、无法恢复、无法接收输入、明显跑偏或用户要求
+  重建时，才允许替换一次，并必须先登记 `stale`。

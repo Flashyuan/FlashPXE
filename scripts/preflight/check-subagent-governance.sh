@@ -54,6 +54,9 @@ required_plan_markers=(
   "同一 milestone 内，同一角色优先复用同一个会话"
   "主控必须维护当前 milestone 的会话登记"
   "优先 \`send_input\` 回传给已有会话"
+  "或 \`completed\` 只代表该次输入完成"
+  "同一个 agent_id"
+  "禁止把 \`AGENTS.md\` 或旧计划中的“spawn/invoke reviewer”理解为无条件"
   "禁止在已有固定会话池可用时，为同一职责另开新窗口"
   "长期协作台账见 \`docs/SUBAGENT_SESSION_POOL.md\`"
   "协作统计与压缩恢复快照”是恢复"
@@ -69,6 +72,7 @@ required_plan_markers=(
   "### 23.4 Subagent 超量调用复盘"
   "能由脚本验证的事实 → 主控先跑脚本，再把结果发给已有 agent"
   "需要语义判断 → 复用对应 agent；无可复用会话才新建一次"
+  "2026-06-16 SMB/CIFS livefs 事故修正规则"
 )
 
 for marker in "${required_plan_markers[@]}"; do
@@ -106,6 +110,9 @@ required_pool_markers=(
   "## 8. 上下文压缩交接规则"
   "agent not found"
   "spawn_failed"
+  "2026-06-16 security_audit_agent 重复创建事故"
+  "completed_not_pool"
+  "不代表废弃会话"
 )
 
 for marker in "${required_pool_markers[@]}"; do
@@ -113,6 +120,26 @@ for marker in "${required_pool_markers[@]}"; do
     fail "docs/SUBAGENT_SESSION_POOL.md 缺少长期协作台账标记: ${marker}"
   fi
 done
+
+required_agents_markers=(
+  "invoke \`network_safety_agent\`"
+  "invoke \`network_safety_agent\` and \`security_audit_agent\`"
+  "first read \`docs/SUBAGENT_SESSION_POOL.md\`"
+  "reuse the registered role session"
+  "not create a new same-role subagent merely because"
+  "because a BLOCKED finding was fixed"
+  "send the fix back to the same reviewer"
+)
+
+for marker in "${required_agents_markers[@]}"; do
+  if ! grep -Fq "$marker" AGENTS.md; then
+    fail "AGENTS.md 缺少 subagent 复用标记: ${marker}"
+  fi
+done
+
+if grep -Fq "spawn both network_safety_agent and security_audit_agent" AGENTS.md; then
+  fail "AGENTS.md 仍包含会误导重复创建审计 agent 的旧 spawn both 文案"
+fi
 
 info "subagent_role_files=${actual_count}"
 info "subagent_role_pool=11"

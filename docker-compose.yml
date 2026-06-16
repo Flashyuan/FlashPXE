@@ -8,6 +8,7 @@ services:
       SYNABOOT_CONFIG_DIR: /srv/synaboot/config
       SYNABOOT_PORT: ${SYNABOOT_HTTP_PORT:-18080}
       SYNABOOT_ADMIN_TOKEN: ${SYNABOOT_ADMIN_TOKEN:-}
+      SYNABOOT_NFS_SERVER: ${SYNABOOT_NFS_SERVER:-${SERVER_IP:-192.168.1.168}}
     volumes:
       - ./data:/srv/synaboot/data
       - ./config:/srv/synaboot/config:ro

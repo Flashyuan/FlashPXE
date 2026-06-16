@@ -106,7 +106,7 @@ Required agents:
 - security_audit_agent
 - git_audit_agent
 
-Before Phase 3 design or implementation, spawn research_agent first to investigate
+Before Phase 3 design or implementation, invoke `research_agent` first to investigate
 router firmware capabilities, DHCP/PXE/HTTP Boot protocol behavior, and any
 uncertain external facts. Other agents should request research_agent input when
 they need knowledge base or internet research.
@@ -117,9 +117,17 @@ the user's behalf when network_safety_agent and security_audit_agent have not
 blocked the option and the decision preserves normal LAN connectivity and
 internet access.
 
-Before making network-related changes, spawn network_safety_agent.
+Before making network-related changes, invoke `network_safety_agent`.
 
-After implementation, spawn both network_safety_agent and security_audit_agent for final review.
+After implementation, invoke `network_safety_agent` and `security_audit_agent`
+for final review when the change touches their risk areas.
+
+In this document, "invoke" means: first read `docs/SUBAGENT_SESSION_POOL.md`,
+reuse the registered role session with `resume_agent`/`send_input` when it is
+available, and only create a replacement session after the registered session is
+confirmed stale, unreachable, off-role, or explicitly replaced by the user. Do
+not create a new same-role subagent merely because a previous review completed
+or because a BLOCKED finding was fixed; send the fix back to the same reviewer.
 
 After each completed feature or milestone, run git_audit_agent before considering
 the work complete. The git audit must inspect the diff, secrets, network-impacting

@@ -43,6 +43,12 @@ Ubuntu/Linux 提取任务只允许从源 ISO 提取：
 ```text
 casper/vmlinuz
 casper/initrd
+casper/*.squashfs
+casper/*.manifest
+casper/*.size
+casper/install_sources.yaml
+.disk/casper-uuid
+.disk/casper_uuid_generic
 ```
 
 管理员已将 Linux ISO 放入 `data/images/linux/...` 后，也可以使用本地批量准备脚本：
@@ -51,11 +57,12 @@ casper/initrd
 bash scripts/image-factory/prepare-linux-boot-artifacts.sh
 ```
 
-该脚本只处理 `data/images/linux/**/*.iso`。它会优先使用本机已有 `bsdtar`
-或 `7z`；若没有外部工具，则使用项目内 `extract-iso9660-file.py` 只读提取器
-提取 `casper/vmlinuz` 与 `casper/initrd`。输出仍写回对应 ISO 目录下的
-`casper/`。如果目标文件已存在、路径越界或解包结果不是普通文件，脚本会
-fail-fast，不会安装依赖、不会挂载 ISO、不会处理 Windows/HotPE。
+该脚本只处理 `data/images/linux/**/*.iso`。Linux livefs 准备强制使用项目内
+`extract-iso9660-file.py` 只读提取器，按白名单、路径边界和大小上限提取
+`casper/vmlinuz`、`casper/initrd` 与 `casper/*.squashfs`。输出仍写回对应 ISO
+目录下的 `casper/`。如果路径越界、解包结果不是普通文件或 ISO 内目标文件
+超过大小上限，脚本会 fail-fast，不会安装依赖、不会挂载 ISO、不会处理
+Windows/HotPE。
 
 HotPE 本地准备脚本可以尝试从 `data/images/pe/hotpe/*.iso` 的固定候选路径
 提取 `bootmgr`、`BCD`、`boot.sdi`、`boot.wim`：
@@ -84,12 +91,13 @@ python3 scripts/boot-assets/import-wimboot.py /path/to/wimboot \
 
 - 原始 ISO 只读，不删除、不改写。
 - 输出只写入 `data/images` 对应子目录或 `data/builds/<job-id>/`。
-- 目标文件存在时拒绝覆盖。
-- 解包得到的 `casper/vmlinuz` 和 `casper/initrd` 必须是普通文件，若为
+- 目标文件存在时会校验为普通文件并保留，不覆盖。
+- 解包得到的 `casper/vmlinuz`、`casper/initrd` 和 `casper/*.squashfs` 必须是普通文件，若为
   symlink、特殊文件或缺失文件则拒绝复制。
 - HotPE 解包得到的 `bootmgr`、`BCD`、`boot.sdi` 和 `boot.wim` 也必须是
   普通文件，若为 symlink、特殊文件或缺失文件则拒绝复制。
-- 只探测本机已有 `bsdtar` 或 `7z`，不会自动安装新依赖。
+- Ubuntu/Linux livefs 准备不调用 `bsdtar` 或 `7z`，避免绕过大小上限。
+- HotPE 准备可探测本机已有 `bsdtar` 或 `7z`，不会自动安装新依赖。
 - 不执行分区、格式化、写真实块设备、挂载宿主敏感目录等操作。
 
 ## Windows ADK/DISM

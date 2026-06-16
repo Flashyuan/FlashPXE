@@ -182,14 +182,22 @@ data/images/pe/hotpe/
 └── boot.wim
 ```
 
-Ubuntu/Linux 需要同一目录下同时具备 ISO、kernel、initrd：
+Ubuntu/Linux 需要同一目录下同时具备 ISO、kernel、initrd 和 livefs：
 
 ```text
 data/images/linux/ubuntu-22.04.3/
-└── ubuntu-22.04.3-desktop-amd64.iso
+├── ubuntu-22.04.3-desktop-amd64.iso
+└── casper/
+    ├── vmlinuz
+    ├── initrd
+    └── *.squashfs
 
 data/images/linux/ubuntu-24.04/
-└── ubuntu-24.04.3-desktop-amd64.iso
+├── ubuntu-24.04.3-desktop-amd64.iso
+└── casper/
+    ├── vmlinuz
+    ├── initrd
+    └── *.squashfs
 ```
 
 Windows ISO/WIM/ESD 放入 `data/images/windows/` 后，默认通过 HotPE 辅助安装，不作为通用直接启动项。

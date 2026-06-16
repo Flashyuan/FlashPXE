@@ -10,6 +10,7 @@ cd "$ROOT_DIR"
 
 LAB_IFACE="${SYNABOOT_LAB_IFACE:-ens19}"
 LAB_IP="${SYNABOOT_LAB_IP:-10.101.8.135}"
+NFS_IP="${SYNABOOT_NFS_LAB_IP:-10.101.8.136}"
 LAB_CIDR="${SYNABOOT_LAB_CIDR:-10.101.8.0}"
 LAB_NETMASK="${SYNABOOT_LAB_NETMASK:-255.255.255.0}"
 PROD_IFACE="${SYNABOOT_PROD_IFACE:-ens18}"
@@ -33,6 +34,7 @@ info() {
 
 [[ "$LAB_IFACE" == "ens19" ]] || fail "实验接口必须是 ens19，当前: ${LAB_IFACE}"
 [[ "$LAB_IP" == "10.101.8.135" ]] || fail "实验 IP 必须是 10.101.8.135，当前: ${LAB_IP}"
+[[ "$NFS_IP" == "10.101.8.136" ]] || fail "NFS 实验 IP 必须是 10.101.8.136，当前: ${NFS_IP}"
 [[ "$PROD_IFACE" == "ens18" ]] || fail "生产接口期望 ens18，当前: ${PROD_IFACE}"
 [[ "$PROD_IP" == "192.168.1.168" ]] || fail "生产 IP 期望 192.168.1.168，当前: ${PROD_IP}"
 
@@ -73,6 +75,15 @@ chmod 0644 "$TFTP_ROOT/snponly.efi" "$TFTP_ROOT/ipxe.efi"
 [[ -f data/images/windows/win11/boot/boot.sdi ]] || fail "缺少 data/images/windows/win11/boot/boot.sdi"
 [[ -f data/images/windows/win11/boot/boot.wim ]] || fail "缺少 data/images/windows/win11/boot/boot.wim"
 [[ -f data/images/windows/win11/boot/bootx64.efi ]] || fail "缺少 data/images/windows/win11/boot/bootx64.efi"
+[[ -f data/images/linux/ubuntu-22.04.3/casper/vmlinuz ]] || fail "缺少 Ubuntu 22.04.3 vmlinuz"
+[[ -f data/images/linux/ubuntu-22.04.3/casper/initrd ]] || fail "缺少 Ubuntu 22.04.3 initrd"
+[[ -f data/images/linux/ubuntu-22.04.3/casper/filesystem.squashfs ]] || fail "缺少 Ubuntu 22.04.3 livefs"
+[[ -f data/images/linux/ubuntu-22.04.3/ubuntu-22.04.3-desktop-amd64.iso ]] || fail "缺少 Ubuntu 22.04.3 ISO fallback"
+[[ -f data/images/linux/ubuntu-24.04/casper/vmlinuz ]] || fail "缺少 Ubuntu 24.04 vmlinuz"
+[[ -f data/images/linux/ubuntu-24.04/casper/initrd ]] || fail "缺少 Ubuntu 24.04 initrd"
+find data/images/linux/ubuntu-24.04/casper -maxdepth 1 -type f -name '*.squashfs' -print -quit | grep -q . \
+  || fail "缺少 Ubuntu 24.04 livefs"
+[[ -f data/images/linux/ubuntu-24.04/ubuntu-24.04.3-desktop-amd64.iso ]] || fail "缺少 Ubuntu 24.04 ISO fallback"
 
 cat > data/boot/menu-lab.ipxe <<EOF
 #!ipxe
@@ -101,36 +112,16 @@ item --gap --          ${LAB_IP}    \${platform}    \${base-url}
 item --gap --          ----------------------------------------------------------------------------
 item --gap --          ISO Boot Menu
 item --gap --          SIZE      IMAGE
-item --key w windows_setup  5162MB   Windows 11 24H2 Pro Chinese x64      [default]
-item --key h hotpe          1058MB   HotPE V2.8 recovery environment
-item --key 1 linux_linux_ubuntu_22_04_3  4700MB   Ubuntu 22.04.3 desktop amd64      [HTTP RAM fallback]
-item --key 2 linux_linux_ubuntu_24_04    5900MB   Ubuntu 24.04 desktop amd64        [HTTP RAM fallback]
-item --gap --          ----------------------------------------------------------------------------
-item --gap --          Diagnostics
-item --key e windows_explicit 5162MB Windows 11 explicit bootmgfw diagnostic
-item --key f hotpe_native   1058MB   HotPE V2.8 native BCD diagnostic
-item --key d hotpe_raw      1058MB   HotPE V2.8 native raw BCD diagnostic
-item --gap --          ----------------------------------------------------------------------------
-item --gap --          Tools Menu
-item --key s shell          Open iPXE shell
-item --key r reboot         Reboot computer
-item --key p poweroff       Power off computer
+item --key w windows_setup  5162MB   Windows 11 24H2 Pro Chinese x64
+item --key h hotpe          1058MB   HotPE V2.8
+item --key 1 linux_linux_ubuntu_22_04_3  4700MB   Ubuntu 22.04.3 desktop amd64
+item --key 2 linux_linux_ubuntu_24_04    5900MB   Ubuntu 24.04 desktop amd64
 choose --default windows_setup --timeout 15000 target && goto \${target} || goto start
 
 :windows_setup
 echo Loading Windows 11 installer...
 imgfree
 kernel \${image-url}/pe/hotpe/wimboot
-initrd -n BCD \${image-url}/windows/win11/boot/BCD BCD
-initrd -n boot.sdi \${image-url}/windows/win11/boot/boot.sdi boot.sdi
-initrd -n boot.wim \${image-url}/windows/win11/boot/boot.wim boot.wim
-boot || goto boot_failed
-
-:windows_explicit
-echo Loading Windows 11 explicit bootmgfw diagnostic...
-imgfree
-kernel \${image-url}/pe/hotpe/wimboot pause
-initrd -n bootmgfw.efi \${image-url}/windows/win11/boot/bootx64.efi bootmgfw.efi
 initrd -n BCD \${image-url}/windows/win11/boot/BCD BCD
 initrd -n boot.sdi \${image-url}/windows/win11/boot/boot.sdi boot.sdi
 initrd -n boot.wim \${image-url}/windows/win11/boot/boot.wim boot.wim
@@ -146,48 +137,21 @@ initrd -n boot.sdi \${image-url}/windows/win11/boot/boot.sdi boot.sdi
 initrd -n boot.wim \${image-url}/pe/hotpe/boot.wim boot.wim
 boot || goto boot_failed
 
-:hotpe_native
-echo Loading HotPE native BCD diagnostic...
-imgfree
-kernel \${image-url}/pe/hotpe/wimboot pause
-initrd -n bootmgfw.efi \${image-url}/pe/hotpe/bootx64.efi bootmgfw.efi
-initrd -n BCD \${image-url}/pe/hotpe/BCD.uefi BCD
-initrd -n boot.sdi \${image-url}/pe/hotpe/boot.sdi boot.sdi
-initrd -n boot.wim \${image-url}/pe/hotpe/boot.wim boot.wim
-boot || goto boot_failed
-
-:hotpe_raw
-echo Loading HotPE raw BCD diagnostic...
-imgfree
-kernel \${image-url}/pe/hotpe/wimboot rawbcd
-initrd -n BCD \${image-url}/pe/hotpe/BCD.uefi BCD
-initrd -n boot.sdi \${image-url}/pe/hotpe/boot.sdi boot.sdi
-initrd -n boot.wim \${image-url}/pe/hotpe/boot.wim boot.wim
-boot || goto boot_failed
-
 :linux_linux_ubuntu_22_04_3
-echo Loading Ubuntu 22.04.3 HTTP RAM fallback...
-echo This mode downloads the full ISO into client memory.
-kernel \${base-url}/images/linux/ubuntu-22.04.3/casper/vmlinuz ip=dhcp url=\${base-url}/images/linux/ubuntu-22.04.3/ubuntu-22.04.3-desktop-amd64.iso ---
+echo Loading Ubuntu 22.04.3 NFS livefs...
+echo NFS source: ${NFS_IP}:/ubuntu-22.04.3
+echo This mode mounts casper/filesystem.squashfs from the read-only NFS export.
+kernel \${base-url}/images/linux/ubuntu-22.04.3/casper/vmlinuz ip=dhcp boot=casper netboot=nfs nfsroot=${NFS_IP}:/ubuntu-22.04.3 ---
 initrd \${base-url}/images/linux/ubuntu-22.04.3/casper/initrd
 boot || goto boot_failed
 
 :linux_linux_ubuntu_24_04
-echo Loading Ubuntu 24.04 HTTP RAM fallback...
-echo This mode downloads the full ISO into client memory.
-kernel \${base-url}/images/linux/ubuntu-24.04/casper/vmlinuz ip=dhcp url=\${base-url}/images/linux/ubuntu-24.04/ubuntu-24.04.3-desktop-amd64.iso ---
+echo Loading Ubuntu 24.04 NFS livefs...
+echo NFS source: ${NFS_IP}:/ubuntu-24.04
+echo This mode mounts casper/*.squashfs from the read-only NFS export.
+kernel \${base-url}/images/linux/ubuntu-24.04/casper/vmlinuz ip=dhcp boot=casper netboot=nfs nfsroot=${NFS_IP}:/ubuntu-24.04 ---
 initrd \${base-url}/images/linux/ubuntu-24.04/casper/initrd
 boot || goto boot_failed
-
-:shell
-shell
-goto start
-
-:reboot
-reboot
-
-:poweroff
-poweroff
 
 :boot_failed
 echo Boot failed. Press any key to return to FlashPXE.
@@ -256,6 +220,7 @@ dnsmasq --test --conf-file="$CONF_FILE" >/dev/null
 
 info "lab_menu=http://${LAB_IP}:${HTTP_PORT}/boot/menu-lab.ipxe"
 info "lab_chain=http://${LAB_IP}:${HTTP_PORT}/boot/lab-chain.ipxe"
+info "ubuntu_nfs=${NFS_IP}:/ubuntu-22.04.3 ${NFS_IP}:/ubuntu-24.04"
 info "http_loader=http://${LAB_IP}:${HTTP_PORT}/boot/loaders/ipxe.efi"
 info "pxe_loader=snponly.efi"
 info "dnsmasq_conf=${CONF_FILE}"
