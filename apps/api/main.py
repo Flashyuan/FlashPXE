@@ -428,9 +428,19 @@ def hotpe_required_artifacts() -> list[str]:
     return [
         "pe/hotpe/wimboot",
         "pe/hotpe/bootmgr",
+        "pe/hotpe/bootx64.efi",
         "pe/hotpe/BCD",
         "pe/hotpe/boot.sdi",
         "pe/hotpe/boot.wim",
+    ]
+
+
+def windows_wimboot_required_artifacts() -> list[str]:
+    return [
+        "pe/hotpe/wimboot",
+        "windows/win11/boot/BCD",
+        "windows/win11/boot/boot.sdi",
+        "windows/win11/boot/boot.wim",
     ]
 
 
@@ -768,13 +778,7 @@ def row_enabled(row: dict) -> bool:
 
 
 def hotpe_menu_ready(rows: list[dict]) -> bool:
-    required = {
-        "pe/hotpe/wimboot",
-        "pe/hotpe/bootmgr",
-        "pe/hotpe/BCD",
-        "pe/hotpe/boot.sdi",
-        "pe/hotpe/boot.wim",
-    }
+    required = set(hotpe_required_artifacts())
     enabled_present = {row["rel_path"] for row in rows if row_enabled(row)}
     return required.issubset(enabled_present)
 
@@ -812,6 +816,11 @@ def windows_hotpe_available(rows: list[dict]) -> bool:
         and row.get("boot_readiness") == "needs_hotpe"
         for row in rows
     )
+
+
+def windows_wimboot_ready(rows: list[dict]) -> bool:
+    present = {row["rel_path"] for row in rows if row_enabled(row)}
+    return set(windows_wimboot_required_artifacts()).issubset(present)
 
 
 def readonly_image_rows_for_status() -> tuple[list[dict], str]:
@@ -950,7 +959,13 @@ def write_menu(_rows: list[dict] | None = None) -> str:
     rows = menu_rows(_rows)
     hotpe_ready = hotpe_menu_ready(rows)
     linux_entries = linux_boot_entries(rows)
-    windows_ready = windows_hotpe_available(rows)
+    windows_ready = windows_wimboot_ready(rows)
+    for index, entry in enumerate(linux_entries, start=1):
+        entry["label"] = f"linux_{ipxe_label(entry['base'])}"
+        entry["key"] = str(index) if index <= 9 else ""
+    default_target = "windows_setup" if windows_ready else ("hotpe" if hotpe_ready else (linux_entries[0]["label"] if linux_entries else "shell"))
+    hotpe_suffix = "  [default]" if default_target == "hotpe" else ""
+    windows_suffix = "  [default]" if default_target == "windows_setup" else ""
     lines = [
         "#!ipxe",
         "",
@@ -958,29 +973,52 @@ def write_menu(_rows: list[dict] | None = None) -> str:
         f"set base-url http://${{server-ip}}:{SYNABOOT_PORT}",
         "set boot-url ${base-url}/boot",
         "set image-url ${base-url}/images",
+        "isset ${platform} || set platform unknown",
         "",
         ":start",
-        "menu SynaBoot Phase 2 - HTTP/iPXE Boot",
+        "menu SynaBoot Deployment Console",
+        "item --gap --          ----------------------------------------",
+        "item --gap --          Phase 2 HTTP Boot | ${platform} | ${base-url}",
+        "item --gap --          Zero-intrusion mode: DHCP/ProxyDHCP/TFTP disabled",
+        "item --gap --          ----------------------------------------",
     ]
-    if hotpe_ready:
-        lines.extend(["item --gap --          === PE / Recovery ===", "item hotpe            HotPE via wimboot"])
-    if linux_entries:
-        lines.append("item --gap --          === Linux ===")
-        for entry in linux_entries:
-            label = f"linux_{ipxe_label(entry['base'])}"
-            entry["label"] = label
-            lines.append(f"item {label:<16} Linux installer - {ipxe_text(entry['base'])}")
     if windows_ready:
-        lines.extend(["item --gap --          === Windows ===", "item windows_hotpe    Windows installation via HotPE"])
+        lines.extend(
+            [
+                "item --gap --          [ Windows ]",
+                f"item --key w windows_setup  (W) Boot Windows installer{windows_suffix}",
+            ]
+        )
+    if hotpe_ready:
+        lines.extend(
+            [
+                "item --gap --          [ PE / Recovery ]",
+                f"item --key h hotpe          (H) Boot HotPE recovery environment{hotpe_suffix}",
+            ]
+        )
+    if linux_entries:
+        lines.append("item --gap --          [ Linux Deployment ]")
+        for entry in linux_entries:
+            key = entry["key"]
+            key_prefix = f"({key}) " if key else "    "
+            key_arg = f"--key {key} " if key else ""
+            default_suffix = "  [default]" if default_target == entry["label"] else ""
+            lines.append(f"item {key_arg}{entry['label']:<16} {key_prefix}Boot Ubuntu/Linux - {ipxe_text(entry['base'])} [HTTP RAM fallback]{default_suffix}")
+    if not hotpe_ready and not linux_entries and not windows_ready:
+        lines.extend(
+            [
+                "item --gap --          [ No Ready Boot Entries ]",
+                "item --gap --          Prepare HotPE or Linux images from the admin UI.",
+            ]
+        )
     lines.extend(
         [
-            "item --gap --          === Tools ===",
-            "item shell            iPXE shell",
-            "item reboot           Reboot",
-            "item poweroff         Power off",
+            "item --gap --          [ Tools ]",
+            "item --key s shell          (S) Open iPXE shell",
+            "item --key r reboot         (R) Reboot client",
+            "item --key p poweroff       (P) Power off client",
         ]
     )
-    default_target = "hotpe" if hotpe_ready else (linux_entries[0]["label"] if linux_entries else "shell")
     lines.extend(
         [
             f"choose --default {default_target} --timeout 15000 target && goto ${{target}} || goto start",
@@ -992,11 +1030,12 @@ def write_menu(_rows: list[dict] | None = None) -> str:
         lines.extend(
             [
                 "echo Loading HotPE...",
-                "kernel ${image-url}/pe/hotpe/wimboot",
-                "initrd ${image-url}/pe/hotpe/bootmgr bootmgr",
-                "initrd ${image-url}/pe/hotpe/BCD BCD",
-                "initrd ${image-url}/pe/hotpe/boot.sdi boot.sdi",
-                "initrd ${image-url}/pe/hotpe/boot.wim boot.wim",
+                "imgfree",
+                "kernel ${image-url}/pe/hotpe/wimboot pause",
+                "initrd -n bootmgfw.efi ${image-url}/windows/win11/boot/bootx64.efi bootmgfw.efi",
+                "initrd -n BCD ${image-url}/windows/win11/boot/BCD BCD",
+                "initrd -n boot.sdi ${image-url}/windows/win11/boot/boot.sdi boot.sdi",
+                "initrd -n boot.wim ${image-url}/pe/hotpe/boot.wim boot.wim",
                 "boot || goto boot_failed",
             ]
         )
@@ -1011,10 +1050,14 @@ def write_menu(_rows: list[dict] | None = None) -> str:
         lines.extend(
             [
                 "",
-                ":windows_hotpe",
-                "echo Windows ISO/WIM/ESD should be installed from HotPE.",
-                "echo Boot HotPE, then open ${image-url}/windows/.",
-                "goto hotpe",
+                ":windows_setup",
+                "echo Loading Windows installer...",
+                "imgfree",
+                "kernel ${image-url}/pe/hotpe/wimboot",
+                "initrd -n BCD ${image-url}/windows/win11/boot/BCD BCD",
+                "initrd -n boot.sdi ${image-url}/windows/win11/boot/boot.sdi boot.sdi",
+                "initrd -n boot.wim ${image-url}/windows/win11/boot/boot.wim boot.wim",
+                "boot || goto boot_failed",
             ]
         )
     for entry in linux_entries:
@@ -1022,7 +1065,8 @@ def write_menu(_rows: list[dict] | None = None) -> str:
             [
                 "",
                 f":{entry['label']}",
-                f"echo Loading Linux installer from {ipxe_text(entry['base'])}...",
+                f"echo Loading Ubuntu/Linux HTTP RAM fallback from {ipxe_text(entry['base'])}...",
+                "echo This mode downloads the full ISO into client memory.",
                 f"kernel ${{base-url}}/images/{ipxe_url_path(entry['kernel'])} ip=dhcp url=${{base-url}}/images/{ipxe_url_path(entry['iso'])} ---",
                 f"initrd ${{base-url}}/images/{ipxe_url_path(entry['initrd'])}",
                 "boot || goto boot_failed",
@@ -1042,7 +1086,8 @@ def write_menu(_rows: list[dict] | None = None) -> str:
             "poweroff",
             "",
             ":boot_failed",
-            "echo Boot failed. Press any key to return to menu.",
+            "echo Boot failed. Check image readiness in the SynaBoot admin UI.",
+            "echo Press any key to return to the deployment console.",
             "prompt",
             "goto start",
             "",
@@ -1061,13 +1106,21 @@ def read_menu() -> str:
 
 set server-ip {SERVER_IP}
 set base-url http://${{server-ip}}:{SYNABOOT_PORT}
+set image-url ${{base-url}}/images
+isset ${{platform}} || set platform unknown
 
 :start
-menu SynaBoot Phase 2 - HTTP/iPXE Boot
-item --gap --          === No ready images ===
-item shell iPXE shell
-item reboot Reboot
-item poweroff Power off
+menu SynaBoot Deployment Console
+item --gap --          ----------------------------------------
+item --gap --          Phase 2 HTTP Boot | ${{platform}} | ${{base-url}}
+item --gap --          Zero-intrusion mode: DHCP/ProxyDHCP/TFTP disabled
+item --gap --          ----------------------------------------
+item --gap --          [ No Ready Boot Entries ]
+item --gap --          Prepare HotPE or Linux images from the admin UI.
+item --gap --          [ Tools ]
+item --key s shell          (S) Open iPXE shell
+item --key r reboot         (R) Reboot client
+item --key p poweroff       (P) Power off client
 choose --default shell --timeout 15000 target && goto ${{target}} || goto start
 
 :shell
@@ -1081,7 +1134,8 @@ reboot
 poweroff
 
 :boot_failed
-echo Boot failed. Press any key to return to menu.
+echo Boot failed. Check image readiness in the SynaBoot admin UI.
+echo Press any key to return to the deployment console.
 prompt
 goto start
 """

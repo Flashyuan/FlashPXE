@@ -136,6 +136,8 @@ extract_from_iso() {
 
   cp "$extracted_vmlinuz" "$vmlinuz_target"
   cp "$extracted_initrd" "$initrd_target"
+  chmod 0755 "$casper_dir"
+  chmod 0644 "$vmlinuz_target" "$initrd_target"
   info "prepared=${target_dir#$ROOT_DIR/}/casper/vmlinuz ${target_dir#$ROOT_DIR/}/casper/initrd"
 }
 

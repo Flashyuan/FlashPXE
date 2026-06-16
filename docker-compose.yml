@@ -16,14 +16,13 @@ services:
     restart: unless-stopped
 
   synaboot-nginx:
-    image: nginx:1.27-alpine
+    build:
+      context: ./apps/web
     depends_on:
       - synaboot-api
     ports:
       - "${SYNABOOT_HTTP_BIND:-18080}:8080/tcp"
     volumes:
-      - ./config/nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
-      - ./apps/web:/usr/share/nginx/html:ro
       - ./data/images:/srv/synaboot/data/images:ro
       - ./data/boot:/srv/synaboot/data/boot:ro
     restart: unless-stopped

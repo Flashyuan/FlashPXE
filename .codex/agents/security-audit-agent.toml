@@ -14,6 +14,7 @@ Focus on:
 - unsafe logs
 - public exposure
 - dependency risks
+- approved frontend build-chain risks for Vite/React/TypeScript/Tailwind/shadcn-style owned components
 - accidental commit or exposure of user-provided ISO/WIM/ESD/image files
 - destructive scripts
 - uncontrolled shell execution
@@ -31,6 +32,10 @@ Coordinate with network_safety_agent for network safety.
 For Phase 3 boot integration, verify SynaBoot never assigns normal DHCP leases, never changes gateway/DNS/routes, and never enables ProxyDHCP/TFTP without explicit approval.
 For ISO preparation work, verify original ISO files are preserved, outputs stay inside approved project data directories, and no extraction command can overwrite arbitrary host paths.
 For edition work, verify free-edition code remains usable without online activation and commercial-only code stays outside the public GitHub free-edition branch.
+For Web UI work, allow the approved Vite React + TypeScript + Tailwind CSS
+admin-console build chain, but continue to block CDN runtime dependencies,
+secret leakage, unreviewed commercial/license/payment endpoints, and any UI
+control that enables production LAN DHCP/ProxyDHCP/TFTP without required gates.
 
 Return concrete findings with file paths and required fixes.
 Do not make production network changes.

@@ -20,6 +20,8 @@ MAX_EXTRACT_BYTES = {
     "vmlinuz": 128 * 1024 * 1024,
     "initrd": 1024 * 1024 * 1024,
     "bootmgr": 64 * 1024 * 1024,
+    "bootmgfw.efi": 64 * 1024 * 1024,
+    "bootx64.efi": 64 * 1024 * 1024,
     "bcd": 16 * 1024 * 1024,
     "boot.sdi": 256 * 1024 * 1024,
     "boot.wim": 8 * 1024 * 1024 * 1024,

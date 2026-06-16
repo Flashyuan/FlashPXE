@@ -93,6 +93,13 @@ allowed_disabled_keyword_context() {
     scripts/preflight/check-phase3-gates.py:*)
       grep -Fq 'Phase 3 gates remain readonly and blocked' "$script"
       ;;
+    scripts/lab/*.sh:*)
+      grep -Fq 'SYNABOOT_LAB_ONLY_BIND=10.101.8.135' "$script" \
+        && grep -Fq 'SYNABOOT_LAB_ONLY_INTERFACE=ens19' "$script" \
+        && grep -Fq 'SYNABOOT_REQUIRES_MANUAL_SUDO_CONFIRMATION=1' "$script" \
+        && grep -Fq '192.168.1.168' "$script" \
+        && grep -Fq '10.101.8.135' "$script"
+      ;;
     *)
       return 1
       ;;

@@ -683,9 +683,10 @@ Codex 官方支持通过 `.codex/agents/*.toml` 定义 project-scoped custom age
   SynaBoot 是运维/装机管理后台，不得强行套用 landing page、portfolio 或
   marketing hero 模式。
 - `frontend-design` 用于色彩、字体、间距、信息层级和用户可理解文案。
-- `shadcn-ui` 与 `tailwind-design-system` 只能作为可访问组件、设计 token 和
-  响应式系统参考；当前轻量静态 Web UI 未经架构决策不得擅自引入 React、
-  Tailwind、Radix、shadcn 或新构建链。
+- `shadcn-ui` 与 `tailwind-design-system` 当前已被批准用于管理后台现代化
+  重构：允许采用 Vite React、TypeScript、Tailwind CSS 和 shadcn 风格的
+  自有组件；不得引入外部 CDN 运行时依赖，不得加入未审查的商业授权、
+  支付、订阅、联网激活或生产 LAN 开关入口。
 - 不得引入公网依赖。
 - 不得上传镜像到第三方。
 
@@ -1136,15 +1137,17 @@ Web UI agent。
 
 - 沿用现有轻量静态 Web。
 - 不引入外部 CDN。
-- 不引入新前端框架。
+- 2026-06-16 起，管理后台前端允许采用 React + TypeScript + Tailwind CSS
+  的现代主题重构；免费版发布线仍不得加入商业授权、支付、订阅、联网激活或
+  生产 LAN 自动启用入口。
 - 实现 Dashboard、镜像仓库、镜像详情、菜单预览、HotPE 指南、构建任务、网络安全页。
 - 所有写操作必须通过 admin token。
 - 后续 Web UI/网页后端联动重构必须使用本地个人 skills 作为检查框架：
   `design-review`、`design-taste-frontend`、`frontend-design`、`shadcn-ui`、
   `tailwind-design-system`。
-- 这些 skills 不自动授权新增依赖或迁移框架；若需要 Tailwind/shadcn/React
-  迁移，必须先由 `architecture_agent` 和 `project_decision_agent` 决策，
-  再经 `security_audit_agent` 和 `git_audit_agent` 审查。
+- 这些 skills 已被授权用于管理后台现代化迁移；Tailwind/shadcn/React
+  迁移必须经过 `security_audit_agent` 和 `git_audit_agent` 审查，且不能
+  破坏免费核心能力、镜像数据边界和网络安全边界。
 
 ### 16.8 image_factory_agent
 
@@ -2008,8 +2011,9 @@ Phase 3 方向决策 agent。
   新建同职责 agent。
 - 重构时应用本地个人 skills：
   `design-review`、`design-taste-frontend`、`frontend-design`、`shadcn-ui`、
-  `tailwind-design-system`，但必须保持 SynaBoot 管理后台属性、LAN 安全边界和
-  当前轻量静态 UI 架构，除非另行通过架构/决策审查。
+  `tailwind-design-system`，并按 2026-06-16 的用户决策将管理后台迁移到
+  React + TypeScript + Tailwind CSS 的现代主题；仍必须保持 SynaBoot
+  管理后台属性、LAN 安全边界、免费核心能力和商业代码隔离。
 
 #### 21.6.7 tutorial_docs_agent
 
@@ -2518,8 +2522,9 @@ curl http://localhost:18080/api/boot-entry
      - `webui_agent`、`architecture_agent`、`project_decision_agent` 已复用
        固定会话审查用户要求，结论一致：允许重构 Web UI、API 只读聚合层、
        页面结构、视觉系统、菜单预览和 HotPE 引导体验。
-     - 第一轮必须保留轻量静态 HTML/CSS/JS 架构，不引入 React、Tailwind、
-       Radix、shadcn 或新构建链；这些本地 skills 只作为检查框架：
+     - 2026-06-16 用户已放宽前端安全审计和技术栈边界：允许管理后台采用
+       React + TypeScript + Tailwind CSS + shadcn 风格自有组件重构；这些
+       本地 skills 作为设计、组件、响应式和审计约束：
        `design-review`、`design-taste-frontend`、`frontend-design`、
        `shadcn-ui`、`tailwind-design-system`。
      - HotPE / Win11 安装检查归入免费版基础装机能力；允许进入 GitHub 免费版

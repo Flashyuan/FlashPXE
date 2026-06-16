@@ -27,7 +27,7 @@ import re
 from pathlib import Path
 
 api_path = Path("apps/api/main.py")
-web_path = Path("apps/web/assets/app.js")
+web_roots = [Path("apps/web/src"), Path("apps/web/assets/app.js")]
 allowlist_path = Path("config/synaboot/public-runtime.allowlist.json")
 
 blocked_endpoint_words = (
@@ -87,10 +87,21 @@ def api_string_constants() -> set[str]:
 
 
 def web_api_urls() -> set[str]:
-    try:
-        text = web_path.read_text(encoding="utf-8")
-    except FileNotFoundError:
-        block(f"缺少 Web 文件: {web_path}")
+    paths: list[Path] = []
+    for root in web_roots:
+        if root.is_file():
+            paths.append(root)
+        elif root.is_dir():
+            paths.extend(sorted(p for p in root.rglob("*") if p.suffix in {".js", ".jsx", ".ts", ".tsx"}))
+    if not paths:
+        block("缺少 Web 运行时代码: apps/web/src 或 apps/web/assets/app.js")
+    text_parts = []
+    for path in paths:
+        try:
+            text_parts.append(path.read_text(encoding="utf-8"))
+        except UnicodeDecodeError:
+            block(f"Web 文件不是 UTF-8: {path}")
+    text = "\n".join(text_parts)
     # 只检查前端静态 fetch URL；模板字符串中的动态 id 会保留 /api/... 前缀。
     static_matches = re.findall(r"""["'`](/api/[^"'`$]*)["'`]""", text)
     template_prefixes = re.findall(r"""`(/api/[^`$]*)\$\{""", text)

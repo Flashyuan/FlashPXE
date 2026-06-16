@@ -18,6 +18,8 @@ SECTOR_SIZE = 2048
 COPY_CHUNK_SIZE = 1024 * 1024
 MAX_EXTRACT_BYTES = {
     "bootmgr": 64 * 1024 * 1024,
+    "bootmgfw.efi": 64 * 1024 * 1024,
+    "bootx64.efi": 64 * 1024 * 1024,
     "bcd": 32 * 1024 * 1024,
     "boot.sdi": 128 * 1024 * 1024,
     "boot.wim": 2 * 1024 * 1024 * 1024,

@@ -138,6 +138,7 @@ HotPE：
 data/images/pe/hotpe/
 ├── wimboot
 ├── bootmgr
+├── bootx64.efi
 ├── BCD
 ├── boot.sdi
 └── boot.wim
@@ -163,8 +164,22 @@ data/images/windows/win11/Windows11_24H2.iso
 
 raw ISO 放入后，Web UI 会显示准备状态、缺失文件和下一步动作。Ubuntu
 ISO 需要提取 `casper/vmlinuz` 与 `casper/initrd` 后才会成为可启动条目。
-HotPE ISO 需要人工准备 `wimboot`、`bootmgr`、`BCD`、`boot.sdi`、
+HotPE ISO 需要人工准备 `wimboot`、`bootmgr`、`bootx64.efi`、`BCD`、`boot.sdi`、
 `boot.wim`，并确认来源可信。
+
+HotPE 的外置工具模块可能位于 ISO 内的 `HotProgMods/*.HPM` 和
+`HotPE/Data/`，不一定包含在 `boot.wim` 内。若 wimboot 启动后桌面工具
+较少，可提取运行时模块：
+
+```bash
+python3 scripts/image-factory/extract-hotpe-runtime-assets.py
+```
+
+提取后可通过实验 SMB 共享在 HotPE 中访问：
+
+```text
+\\10.101.8.135\synaboot-images\pe\hotpe\runtime\HotProgMods
+```
 
 真实 ISO 放好后，可运行服务级 smoke test：
 
@@ -258,6 +273,12 @@ chain http://192.168.1.168:18080/boot/menu.ipxe
 ```
 
 手动 UEFI HTTP Boot 使用同一 URL。
+
+当前 `menu.ipxe` 使用文本模式部署控制台样式：顶部展示 Phase 2 HTTP Boot、
+服务地址和零侵入模式，菜单按 Windows Deployment、PE / Recovery、
+Linux Deployment、Tools 分组，并用快捷键与 `[default]` 标出默认启动项。
+这只是 HTTP/iPXE 菜单展示优化，不会启用 DHCP、ProxyDHCP、TFTP，
+也不会修改 LAN 路由、网关、防火墙或 DNS。
 
 ## 7. 自动安装草稿
 

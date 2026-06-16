@@ -173,6 +173,9 @@ main() {
 
   extract_first_match "$source_iso" "$HOTPE_DIR_CANONICAL/bootmgr" "bootmgr" \
     "bootmgr"
+  extract_first_match "$source_iso" "$HOTPE_DIR_CANONICAL/bootx64.efi" "bootx64.efi" \
+    "EFI/Microsoft/Boot/bootmgfw.efi" "efi/microsoft/boot/bootmgfw.efi" \
+    "EFI/Boot/bootx64.efi" "efi/boot/bootx64.efi"
   extract_first_match "$source_iso" "$HOTPE_DIR_CANONICAL/BCD" "BCD" \
     "Boot/bcd" "boot/BCD" "EFI/MICROSOFT/BOOT/BCD" "efi/microsoft/boot/BCD" "BCD"
   extract_first_match "$source_iso" "$HOTPE_DIR_CANONICAL/boot.sdi" "boot.sdi" \
@@ -187,11 +190,12 @@ main() {
   chmod 0644 \
     "$HOTPE_DIR_CANONICAL/wimboot" \
     "$HOTPE_DIR_CANONICAL/bootmgr" \
+    "$HOTPE_DIR_CANONICAL/bootx64.efi" \
     "$HOTPE_DIR_CANONICAL/BCD" \
     "$HOTPE_DIR_CANONICAL/boot.sdi" \
     "$HOTPE_DIR_CANONICAL/boot.wim"
 
-  info "DONE: HotPE bootmgr/BCD/boot.sdi/boot.wim/wimboot 已齐全。请重新扫描镜像并生成菜单。"
+  info "DONE: HotPE bootmgr/bootx64.efi/BCD/boot.sdi/boot.wim/wimboot 已齐全。请重新扫描镜像并生成菜单。"
 }
 
 main "$@"

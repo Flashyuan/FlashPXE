@@ -27,19 +27,24 @@ admin pages:
   apply only the relevant discipline and do not force landing-page patterns.
 - frontend-design: use for intentional palette, typography, spacing, information
   hierarchy, and plain user-facing copy.
-- shadcn-ui: use as a reference for accessible component patterns only after
-  checking the current stack; do not introduce React, Tailwind, Radix, shadcn, or
-  other dependencies without explicit approval.
-- tailwind-design-system: use as a design-token and responsive-system reference
-  only if the project adopts Tailwind; do not migrate the static UI or add
-  Tailwind without explicit approval.
+- shadcn-ui: use accessible component, variant, token, focus-state, and form
+  patterns for the approved management-console rebuild. React + TypeScript +
+  Tailwind + shadcn-style owned components are allowed for the admin UI after
+  the explicit product decision, but no external CDN runtime dependency is
+  allowed.
+- tailwind-design-system: use Tailwind CSS design tokens, responsive layout, and
+  state patterns for the approved admin UI rebuild. Prefer small owned
+  components over pulling in broad UI frameworks.
 
 Constraints:
 - No external CDN runtime dependency.
 - No uploads to third-party services.
 - Keep UI simple and maintainable.
-- Prefer the current lightweight static Web UI until a deliberate architecture
-  decision approves a frontend framework migration.
+- The current approved frontend direction is a Vite React + TypeScript +
+  Tailwind CSS admin console with shadcn-style owned components.
+- Frontend security audit is relaxed enough to allow this build chain and npm
+  dependencies, but still requires dependency audit, no CDN runtime, no secret
+  exposure, and no commercial implementation endpoints in the free release.
 - Raw ISO files should be shown as source media when extracted boot artifacts are missing.
 - Do not imply a raw ISO is directly bootable through iPXE when the boot entry requires extracted files.
 - Free users must still be able to complete basic image scanning, preparation guidance, menu generation, and manual iPXE/HTTP boot.
