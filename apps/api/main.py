@@ -1,17 +1,19 @@
 #!/usr/bin/env python3
 import hashlib
 import hmac
+import ipaddress
 import json
 import os
 import re
 import shutil
 import sqlite3
+import sys
 import time
 import uuid
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import quote, urlparse
+from urllib.parse import parse_qs, quote, urlparse
 
 SERVER_IP = os.environ.get("SERVER_IP", "192.168.1.168")
 SYNABOOT_PORT = int(os.environ.get("SYNABOOT_PORT", "18080"))
@@ -30,6 +32,31 @@ DB_PATH = METADATA_DIR / "synaboot.sqlite3"
 LAST_WRITE_BY_CLIENT: dict[str, float] = {}
 CAPABILITIES_PATH = CONFIG_DIR / "synaboot" / "capabilities.free.json"
 EDITION_CATALOG_PATH = CONFIG_DIR / "synaboot" / "editions.public.json"
+ALLOWED_SOFTWARE_SOURCE_POLICIES = {"official_vendor", "official_package_repo", "approved_enterprise_mirror", "admin_reviewed_download"}
+ASSIGNABLE_SOFTWARE_REVIEW_STATUSES = {"approved"}
+ASSIGNABLE_SIGNATURE_POLICIES = {"vendor_signed", "repo_signed", "sha256_required"}
+SOFTWARE_REVIEW_STATUSES = {"needs_review", "approved", "blocked"}
+SOFTWARE_RISK_LEVELS = {"low", "medium", "high"}
+INSTALL_PRESET_STATUSES = {"available", "archived"}
+INSTALL_PRESET_REVIEW_STATUSES = {"approved", "needs_review"}
+SOFTWARE_INSTALL_CONTEXTS = {"winpe", "system_first_boot", "user_logon", "linux_first_boot"}
+SOFTWARE_RESTART_BEHAVIORS = {"none", "allow", "defer", "requires_confirmation"}
+SOFTWARE_INSTALL_LOCATION_POLICIES = {"system_default", "installer_supported_path", "portable_folder", "not_supported"}
+POSTINSTALL_EVENT_STAGES = {"plan", "runner", "variant"}
+POSTINSTALL_EVENT_STATUSES = {"requested", "started", "completed", "failed", "blocked", "skipped"}
+UBUNTU_RUNNER_ACTIONS = {"apt_package", "download_deb"}
+WINDOWS_RUNNER_ACTIONS = {"msi_install", "exe_install", "office_odt_install"}
+DEFAULT_WINDOWS_SOFTWARE_PACKAGE_IDS = ["microsoft-office"]
+UBUNTU_DEFAULT_APT_SOURCE_HOSTS = {"packages.ubuntu.com", "archive.ubuntu.com", "security.ubuntu.com", "ports.ubuntu.com"}
+SAFE_APT_PACKAGE_RE = re.compile(r"^[a-z0-9][a-z0-9+.-]{0,127}$")
+SAFE_OFFICE_PRODUCT_ID_RE = re.compile(r"^[A-Za-z0-9]{3,64}$")
+SAFE_KMS_HOST_RE = re.compile(r"^(?=.{1,253}$)([A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)(?:\.([A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?))*$")
+SAFE_SOFTWARE_ID_RE = re.compile(r"^[a-z0-9][a-z0-9._-]{1,80}$")
+SAFE_SOFTWARE_INSTALLER_TYPE_RE = re.compile(r"^[A-Za-z0-9._+-]{1,40}$")
+SAFE_SILENT_ARGS_RE = re.compile(r"^[A-Za-z0-9 ._=/,:;+\-!]*$")
+SENSITIVE_EVENT_TEXT_RE = re.compile(
+    r"(?i)(token|session_token|password|passwd|secret|api[_-]?key|private[_-]?key|authorization)[A-Za-z0-9._/=: -]*"
+)
 SAFE_TITLE_RE = re.compile(r"[^A-Za-z0-9._ -]+")
 SAFE_IMAGE_REL_PATH_RE = re.compile(r"^[A-Za-z0-9._/-]+$")
 SAFE_IPXE_TEXT_RE = re.compile(r"[^A-Za-z0-9._/ -]+")
@@ -99,6 +126,300 @@ LOADER_CATALOG = [
         "source_type": "unknown",
         "source_guidance": "Use a verified iPXE ISO from an approved internal source.",
         "secure_boot_risk": {"level": "high", "reason": "Secure Boot behavior depends on firmware and ISO contents."},
+    },
+]
+
+DEFAULT_SOFTWARE_CATALOG = [
+    {
+        "id": "feishu",
+        "name": "飞书",
+        "vendor": "ByteDance",
+        "category": "协作",
+        "description": "即时沟通、会议、文档与团队协作。",
+        "homepage_url": "https://www.feishu.cn/",
+        "icon_key": "feishu",
+        "status": "available",
+        "review_status": "needs_review",
+        "variants": [
+            {
+                "id": "feishu-windows-x64",
+                "os_family": "windows",
+                "os_version_constraint": "windows_10_or_11",
+                "arch": "x86_64",
+                "version": "7.68.6",
+                "installer_type": "msi",
+                "official_source_url": "https://www.feishu.cn/hc/zh-CN/articles/360049067543-%E4%BD%BF%E7%94%A8-msi-%E6%96%87%E4%BB%B6%E6%89%B9%E9%87%8F%E9%83%A8%E7%BD%B2%E9%A3%9E%E4%B9%A6%E5%AE%A2%E6%88%B7%E7%AB%AF",
+                "download_url": "https://sf3-cn.feishucdn.com/obj/hera-cn/download/Feishu-win32_x64-7.68.6-signed.msi",
+                "source_policy": "admin_reviewed_download",
+                "sha256": "",
+                "signature_policy": "vendor_signed",
+                "install_phase": "windows_first_boot",
+                "install_action": "msi_install",
+                "install_command_template": "msi_install",
+                "silent_args": "/qn /norestart",
+                "requires_network": 1,
+                "risk_level": "medium",
+                "review_status": "approved",
+                "enabled": 1,
+                "notes": "按飞书官方 MSI 批量部署教程配置；客户端首次启动后直接从飞书 CDN 下载 MSI 并静默安装，SynaBoot 不托管安装包。",
+            },
+            {
+                "id": "feishu-ubuntu-amd64",
+                "os_family": "ubuntu",
+                "os_version_constraint": ">=22.04",
+                "arch": "x86_64",
+                "version": "latest",
+                "installer_type": "deb",
+                "official_source_url": "https://www.feishu.cn/download",
+                "download_url": "https://www.feishu.cn/download",
+                "source_policy": "official_vendor",
+                "sha256": "",
+                "signature_policy": "vendor_signed",
+                "install_phase": "linux_first_boot",
+                "install_action": "official_download",
+                "install_command_template": "",
+                "silent_args": "",
+                "requires_network": 1,
+                "risk_level": "medium",
+                "review_status": "needs_review",
+                "enabled": 1,
+                "notes": "Linux 客户端需确认官方 deb 直链、hash 或签名策略后才能自动安装。",
+            },
+        ],
+    },
+    {
+        "id": "chrome",
+        "name": "Google Chrome",
+        "vendor": "Google",
+        "category": "浏览器",
+        "description": "常用浏览器，适合办公与 Web 系统访问。",
+        "homepage_url": "https://chromeenterprise.google/download/",
+        "icon_key": "chrome",
+        "status": "available",
+        "review_status": "needs_review",
+        "variants": [
+            {
+                "id": "chrome-windows-x64",
+                "os_family": "windows",
+                "os_version_constraint": "windows_10_or_11",
+                "arch": "x86_64",
+                "version": "latest",
+                "installer_type": "msi",
+                "official_source_url": "https://chromeenterprise.google/download/",
+                "download_url": "https://chromeenterprise.google/download/",
+                "source_policy": "official_vendor",
+                "sha256": "",
+                "signature_policy": "vendor_signed",
+                "install_phase": "windows_first_boot",
+                "install_action": "official_download",
+                "install_command_template": "",
+                "silent_args": "/qn /norestart",
+                "requires_network": 1,
+                "risk_level": "medium",
+                "review_status": "needs_review",
+                "enabled": 1,
+                "notes": "Chrome Enterprise MSI 直链和 hash 会随版本变化，需纳入企业审核后启用。",
+            },
+            {
+                "id": "chrome-ubuntu-amd64",
+                "os_family": "ubuntu",
+                "os_version_constraint": ">=22.04",
+                "arch": "x86_64",
+                "version": "stable",
+                "installer_type": "deb",
+                "official_source_url": "https://www.google.com/chrome/",
+                "download_url": "https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb",
+                "source_policy": "official_vendor",
+                "sha256": "",
+                "signature_policy": "vendor_signed",
+                "install_phase": "linux_first_boot",
+                "install_action": "download_deb",
+                "install_command_template": "apt_install_downloaded_deb",
+                "silent_args": "",
+                "requires_network": 1,
+                "risk_level": "medium",
+                "review_status": "needs_review",
+                "enabled": 1,
+                "notes": "官方 deb 会配置 Google 软件源；需补 hash 或签名验证流程后启用自动安装。",
+            },
+        ],
+    },
+    {
+        "id": "vscode",
+        "name": "Visual Studio Code",
+        "vendor": "Microsoft",
+        "category": "开发工具",
+        "description": "轻量代码编辑器和脚本维护工具。",
+        "homepage_url": "https://code.visualstudio.com/download",
+        "icon_key": "vscode",
+        "status": "available",
+        "review_status": "needs_review",
+        "variants": [
+            {
+                "id": "vscode-windows-x64",
+                "os_family": "windows",
+                "os_version_constraint": "windows_10_or_11",
+                "arch": "x86_64",
+                "version": "stable",
+                "installer_type": "exe",
+                "official_source_url": "https://code.visualstudio.com/download",
+                "download_url": "https://code.visualstudio.com/download",
+                "source_policy": "official_vendor",
+                "sha256": "",
+                "signature_policy": "vendor_signed",
+                "install_phase": "windows_first_boot",
+                "install_action": "official_download",
+                "install_command_template": "",
+                "silent_args": "/verysilent /mergetasks=!runcode",
+                "requires_network": 1,
+                "risk_level": "medium",
+                "review_status": "needs_review",
+                "enabled": 1,
+                "notes": "需确认 User/System 安装器选择、静默参数、hash 后启用。",
+            },
+            {
+                "id": "vscode-ubuntu-amd64",
+                "os_family": "ubuntu",
+                "os_version_constraint": ">=22.04",
+                "arch": "x86_64",
+                "version": "stable",
+                "installer_type": "deb",
+                "official_source_url": "https://code.visualstudio.com/docs/setup/linux",
+                "download_url": "https://code.visualstudio.com/sha/download?build=stable&os=linux-deb-x64",
+                "source_policy": "official_vendor",
+                "sha256": "",
+                "signature_policy": "vendor_signed",
+                "install_phase": "linux_first_boot",
+                "install_action": "download_deb",
+                "install_command_template": "apt_install_downloaded_deb",
+                "silent_args": "",
+                "requires_network": 1,
+                "risk_level": "medium",
+                "review_status": "needs_review",
+                "enabled": 1,
+                "notes": "官方 Linux 文档提供 deb 和 apt 源方式；需补 hash 或签名验证后启用。",
+            },
+        ],
+    },
+    {
+        "id": "winscp",
+        "name": "WinSCP",
+        "vendor": "WinSCP",
+        "category": "运维",
+        "description": "Windows 文件传输和远程维护工具。",
+        "homepage_url": "https://winscp.net/eng/download.php",
+        "icon_key": "winscp",
+        "status": "available",
+        "review_status": "needs_review",
+        "variants": [
+            {
+                "id": "winscp-windows-x64",
+                "os_family": "windows",
+                "os_version_constraint": "windows_10_or_11",
+                "arch": "x86_64",
+                "version": "latest",
+                "installer_type": "exe",
+                "official_source_url": "https://winscp.net/eng/download.php",
+                "download_url": "https://winscp.net/eng/download.php",
+                "source_policy": "official_vendor",
+                "sha256": "",
+                "signature_policy": "vendor_signed",
+                "install_phase": "windows_first_boot",
+                "install_action": "official_download",
+                "install_command_template": "",
+                "silent_args": "/VERYSILENT /ALLUSERS /NORESTART",
+                "requires_network": 1,
+                "risk_level": "medium",
+                "review_status": "needs_review",
+                "enabled": 1,
+                "notes": "官方文档提供静默参数；需确认具体安装器直链和 hash 后启用。",
+            },
+        ],
+    },
+    {
+        "id": "microsoft-office",
+        "name": "Microsoft Office",
+        "vendor": "Microsoft",
+        "category": "办公",
+        "description": "Office 办公套件；通过 Office Deployment Tool 从 Microsoft 官方来源安装。",
+        "homepage_url": "https://learn.microsoft.com/deployoffice/overview-office-deployment-tool",
+        "icon_key": "office",
+        "status": "available",
+        "review_status": "needs_review",
+        "variants": [
+            {
+                "id": "office-windows-odt",
+                "os_family": "windows",
+                "os_version_constraint": "windows_10_or_11",
+                "arch": "x86_64",
+                "version": "latest",
+                "installer_type": "office_odt",
+                "official_source_url": "https://learn.microsoft.com/deployoffice/overview-office-deployment-tool",
+                "download_url": "https://go.microsoft.com/fwlink/?linkid=2243204",
+                "source_policy": "official_vendor",
+                "sha256": "",
+                "signature_policy": "vendor_signed",
+                "install_phase": "windows_first_boot",
+                "install_action": "office_odt_install",
+                "package_name": "ProPlus2021Volume",
+                "install_command_template": "office_odt_configure",
+                "silent_args": "",
+                "requires_network": 1,
+                "risk_level": "medium",
+                "review_status": "needs_review",
+                "enabled": 1,
+                "notes": "默认产品 ID 面向 Office 2021 ProPlus 批量授权场景；管理员需确认 ODT 官方直链、Office 授权类型和 KMS/MAK/订阅策略后再批准。",
+            },
+        ],
+    },
+    {
+        "id": "curl",
+        "name": "curl",
+        "vendor": "Ubuntu archive",
+        "category": "运维",
+        "description": "常用命令行 HTTP 客户端，用于脚本下载、连通性测试和自动化维护。",
+        "homepage_url": "https://packages.ubuntu.com/search?keywords=curl",
+        "icon_key": "terminal",
+        "status": "available",
+        "review_status": "approved",
+        "variants": [
+            {
+                "id": "curl-ubuntu-apt",
+                "os_family": "ubuntu",
+                "os_version_constraint": ">=22.04",
+                "arch": "x86_64",
+                "version": "repo",
+                "installer_type": "apt",
+                "official_source_url": "https://packages.ubuntu.com/search?keywords=curl",
+                "download_url": "https://packages.ubuntu.com/search?keywords=curl",
+                "source_policy": "official_package_repo",
+                "sha256": "",
+                "signature_policy": "repo_signed",
+                "install_phase": "linux_first_boot",
+                "install_action": "apt_package",
+                "package_name": "curl",
+                "install_command_template": "apt_install_package",
+                "silent_args": "",
+                "requires_network": 1,
+                "risk_level": "low",
+                "review_status": "approved",
+                "enabled": 1,
+                "notes": "通过 Ubuntu 官方 apt 仓库安装，使用仓库签名校验，不在 SynaBoot 服务器保存安装包。",
+            },
+        ],
+    },
+]
+
+DEFAULT_SOFTWARE_PROFILES = [
+    {
+        "id": "ubuntu-basic-tools",
+        "name": "Ubuntu 基础工具",
+        "description": "Ubuntu 安装后自动安装基础命令行工具；当前只包含已验证的官方 apt 软件。",
+        "os_family": "ubuntu",
+        "variant_ids": ["curl-ubuntu-apt"],
+        "status": "available",
+        "review_status": "approved",
+        "risk_level": "low",
     },
 ]
 
@@ -310,8 +631,518 @@ def connect_db() -> sqlite3.Connection:
         )
         """
     )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS client_sessions (
+            session_id TEXT PRIMARY KEY,
+            session_token_hash TEXT NOT NULL,
+            mac TEXT NOT NULL,
+            ip TEXT NOT NULL,
+            uuid TEXT NOT NULL,
+            serial TEXT NOT NULL,
+            asset TEXT NOT NULL,
+            manufacturer TEXT NOT NULL,
+            product TEXT NOT NULL,
+            platform TEXT NOT NULL,
+            buildarch TEXT NOT NULL,
+            state TEXT NOT NULL,
+            selected_target TEXT NOT NULL,
+            selected_label TEXT NOT NULL,
+            first_seen_at INTEGER NOT NULL,
+            last_seen_at INTEGER NOT NULL,
+            expires_at INTEGER NOT NULL,
+            evidence TEXT NOT NULL
+        )
+        """
+    )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS deployment_assignments (
+            id TEXT PRIMARY KEY,
+            session_id TEXT NOT NULL,
+            session_ids TEXT NOT NULL DEFAULT '[]',
+            source_image_id TEXT NOT NULL,
+            boot_target TEXT NOT NULL,
+            boot_label TEXT NOT NULL,
+            software_package_ids TEXT NOT NULL DEFAULT '[]',
+            software_profile_ids TEXT NOT NULL,
+            software_variant_ids TEXT NOT NULL,
+            resolved_software_plan TEXT NOT NULL DEFAULT '{}',
+            status TEXT NOT NULL,
+            created_by TEXT NOT NULL DEFAULT 'admin',
+            created_at INTEGER NOT NULL,
+            updated_at INTEGER NOT NULL,
+            expires_at INTEGER NOT NULL
+        )
+        """
+    )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS install_presets (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            description TEXT NOT NULL,
+            os_family TEXT NOT NULL,
+            boot_target TEXT NOT NULL,
+            software_package_ids TEXT NOT NULL,
+            software_profile_ids TEXT NOT NULL,
+            settings_json TEXT NOT NULL,
+            status TEXT NOT NULL,
+            review_status TEXT NOT NULL,
+            created_at INTEGER NOT NULL,
+            updated_at INTEGER NOT NULL,
+            notes TEXT NOT NULL
+        )
+        """
+    )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS client_events (
+            id TEXT PRIMARY KEY,
+            session_id TEXT NOT NULL,
+            assignment_id TEXT NOT NULL,
+            event_type TEXT NOT NULL,
+            stage TEXT NOT NULL,
+            status TEXT NOT NULL,
+            message TEXT NOT NULL,
+            payload TEXT NOT NULL,
+            created_at INTEGER NOT NULL
+        )
+        """
+    )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS assignment_boot_tokens (
+            assignment_id TEXT NOT NULL,
+            session_id TEXT NOT NULL,
+            token_hash TEXT NOT NULL,
+            expires_at INTEGER NOT NULL,
+            created_at INTEGER NOT NULL,
+            updated_at INTEGER NOT NULL,
+            PRIMARY KEY (assignment_id, session_id)
+        )
+        """
+    )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS software_packages (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            vendor TEXT NOT NULL,
+            category TEXT NOT NULL,
+            description TEXT NOT NULL,
+            homepage_url TEXT NOT NULL,
+            icon_key TEXT NOT NULL,
+            status TEXT NOT NULL,
+            review_status TEXT NOT NULL,
+            created_at INTEGER NOT NULL,
+            updated_at INTEGER NOT NULL
+        )
+        """
+    )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS software_variants (
+            id TEXT PRIMARY KEY,
+            package_id TEXT NOT NULL,
+            os_family TEXT NOT NULL,
+            os_version_constraint TEXT NOT NULL,
+            arch TEXT NOT NULL,
+            version TEXT NOT NULL,
+            installer_type TEXT NOT NULL,
+            official_source_url TEXT NOT NULL,
+            download_url TEXT NOT NULL,
+            source_policy TEXT NOT NULL,
+            sha256 TEXT NOT NULL,
+            signature_policy TEXT NOT NULL,
+            install_phase TEXT NOT NULL,
+            install_action TEXT NOT NULL,
+            package_name TEXT NOT NULL DEFAULT '',
+            default_for_os INTEGER NOT NULL DEFAULT 0,
+            selection_priority INTEGER NOT NULL DEFAULT 0,
+            install_command_template TEXT NOT NULL,
+            silent_args TEXT NOT NULL,
+            requires_network INTEGER NOT NULL,
+            risk_level TEXT NOT NULL,
+            review_status TEXT NOT NULL,
+            enabled INTEGER NOT NULL,
+            notes TEXT NOT NULL,
+            created_at INTEGER NOT NULL,
+            updated_at INTEGER NOT NULL,
+            FOREIGN KEY(package_id) REFERENCES software_packages(id)
+        )
+        """
+    )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS software_profiles (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            description TEXT NOT NULL,
+            os_family TEXT NOT NULL,
+            variant_ids TEXT NOT NULL,
+            status TEXT NOT NULL,
+            review_status TEXT NOT NULL,
+            risk_level TEXT NOT NULL,
+            created_at INTEGER NOT NULL,
+            updated_at INTEGER NOT NULL
+        )
+        """
+    )
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_deployment_assignments_session ON deployment_assignments(session_id)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_assignment_boot_tokens_expires ON assignment_boot_tokens(expires_at)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_client_events_assignment ON client_events(assignment_id, created_at)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_client_events_session ON client_events(session_id, created_at)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_software_variants_package ON software_variants(package_id)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_software_variants_os ON software_variants(os_family, enabled, review_status)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_software_profiles_os ON software_profiles(os_family, status, review_status)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_install_presets_os ON install_presets(os_family, status, review_status)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_client_sessions_last_seen ON client_sessions(last_seen_at)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_client_sessions_mac_uuid ON client_sessions(mac, uuid)")
     conn.commit()
+    ensure_deployment_assignment_columns(conn)
+    ensure_software_variant_columns(conn)
+    ensure_install_orchestration_seed(conn)
+    ensure_software_catalog(conn)
+    ensure_software_profiles(conn)
     return conn
+
+
+def ensure_deployment_assignment_columns(conn: sqlite3.Connection) -> None:
+    columns = {row["name"] for row in conn.execute("PRAGMA table_info(deployment_assignments)")}
+    migrations = {
+        "session_ids": "ALTER TABLE deployment_assignments ADD COLUMN session_ids TEXT NOT NULL DEFAULT '[]'",
+        "software_package_ids": "ALTER TABLE deployment_assignments ADD COLUMN software_package_ids TEXT NOT NULL DEFAULT '[]'",
+        "resolved_software_plan": "ALTER TABLE deployment_assignments ADD COLUMN resolved_software_plan TEXT NOT NULL DEFAULT '{}'",
+        "created_by": "ALTER TABLE deployment_assignments ADD COLUMN created_by TEXT NOT NULL DEFAULT 'admin'",
+        "boot_token_hash": "ALTER TABLE deployment_assignments ADD COLUMN boot_token_hash TEXT NOT NULL DEFAULT ''",
+        "boot_token_expires_at": "ALTER TABLE deployment_assignments ADD COLUMN boot_token_expires_at INTEGER NOT NULL DEFAULT 0",
+        "install_preset_id": "ALTER TABLE deployment_assignments ADD COLUMN install_preset_id TEXT NOT NULL DEFAULT ''",
+        "task_sequence_plan": "ALTER TABLE deployment_assignments ADD COLUMN task_sequence_plan TEXT NOT NULL DEFAULT '{}'",
+    }
+    for column, sql in migrations.items():
+        if column not in columns:
+            conn.execute(sql)
+    rows = conn.execute("SELECT id, session_id FROM deployment_assignments WHERE session_ids = '[]' OR session_ids = ''").fetchall()
+    for row in rows:
+        conn.execute(
+            "UPDATE deployment_assignments SET session_ids = ? WHERE id = ?",
+            (json.dumps([row["session_id"]], ensure_ascii=False), row["id"]),
+        )
+    conn.commit()
+
+
+def ensure_software_variant_columns(conn: sqlite3.Connection) -> None:
+    columns = {row["name"] for row in conn.execute("PRAGMA table_info(software_variants)")}
+    migrations = {
+        "package_name": "ALTER TABLE software_variants ADD COLUMN package_name TEXT NOT NULL DEFAULT ''",
+        "default_for_os": "ALTER TABLE software_variants ADD COLUMN default_for_os INTEGER NOT NULL DEFAULT 0",
+        "selection_priority": "ALTER TABLE software_variants ADD COLUMN selection_priority INTEGER NOT NULL DEFAULT 0",
+        "install_context": "ALTER TABLE software_variants ADD COLUMN install_context TEXT NOT NULL DEFAULT ''",
+        "detection_rules": "ALTER TABLE software_variants ADD COLUMN detection_rules TEXT NOT NULL DEFAULT '[]'",
+        "requirements_json": "ALTER TABLE software_variants ADD COLUMN requirements_json TEXT NOT NULL DEFAULT '{}'",
+        "dependencies_json": "ALTER TABLE software_variants ADD COLUMN dependencies_json TEXT NOT NULL DEFAULT '[]'",
+        "return_codes_json": "ALTER TABLE software_variants ADD COLUMN return_codes_json TEXT NOT NULL DEFAULT '{\"success\":[0],\"soft_reboot\":[3010]}'",
+        "restart_behavior": "ALTER TABLE software_variants ADD COLUMN restart_behavior TEXT NOT NULL DEFAULT 'none'",
+        "install_location_policy": "ALTER TABLE software_variants ADD COLUMN install_location_policy TEXT NOT NULL DEFAULT 'system_default'",
+    }
+    for column, sql in migrations.items():
+        if column not in columns:
+            conn.execute(sql)
+    conn.commit()
+
+
+def ensure_install_orchestration_seed(conn: sqlite3.Connection) -> None:
+    now = int(time.time())
+    preset_values = {
+        "id": "windows-office-standard",
+        "name": "Windows + Office 标准装机预设",
+        "description": "Windows 安装后自动安装 Office 2021 ProPlus。",
+        "os_family": "windows",
+        "boot_target": "windows_setup",
+        "software_package_ids": json.dumps(DEFAULT_WINDOWS_SOFTWARE_PACKAGE_IDS, ensure_ascii=False),
+        "software_profile_ids": "[]",
+        "settings_json": json.dumps(
+            {
+                "schema_version": "synaboot.install-preset-settings.v1",
+                "office_kms_policy": "use_customer_managed_env_when_enabled",
+                "hostname_rule": "manual_or_existing",
+            },
+            ensure_ascii=False,
+        ),
+        "created_at": now,
+        "updated_at": now,
+        "notes": "免费版第一阶段预设：保存系统和软件组合；不包含磁盘设置。",
+    }
+    install_preset_columns = {row["name"] for row in conn.execute("PRAGMA table_info(install_presets)")}
+    if "partition_template_id" in install_preset_columns:
+        conn.execute(
+            """
+            INSERT OR IGNORE INTO install_presets (
+                id, name, description, os_family, boot_target, partition_template_id,
+                software_package_ids, software_profile_ids, settings_json, status, review_status,
+                created_at, updated_at, notes
+            )
+            VALUES (
+                :id, :name, :description, :os_family, :boot_target, '',
+                :software_package_ids, :software_profile_ids, :settings_json,
+                'available', 'approved', :created_at, :updated_at, :notes
+            )
+            """,
+            preset_values,
+        )
+        conn.execute(
+            """
+            UPDATE install_presets
+            SET description = :description,
+                partition_template_id = '',
+                settings_json = :settings_json,
+                notes = :notes,
+                updated_at = :updated_at
+            WHERE id = :id
+            """,
+            preset_values,
+        )
+    else:
+        conn.execute(
+            """
+            INSERT OR IGNORE INTO install_presets (
+                id, name, description, os_family, boot_target,
+                software_package_ids, software_profile_ids, settings_json, status, review_status,
+                created_at, updated_at, notes
+            )
+            VALUES (
+                :id, :name, :description, :os_family, :boot_target,
+                :software_package_ids, :software_profile_ids, :settings_json,
+                'available', 'approved', :created_at, :updated_at, :notes
+            )
+            """,
+            preset_values,
+        )
+        conn.execute(
+            """
+            UPDATE install_presets
+            SET description = :description,
+                settings_json = :settings_json,
+                notes = :notes,
+                updated_at = :updated_at
+            WHERE id = :id
+            """,
+            preset_values,
+        )
+    conn.commit()
+
+
+def ensure_software_catalog(conn: sqlite3.Connection) -> None:
+    now = int(time.time())
+    for package in DEFAULT_SOFTWARE_CATALOG:
+        conn.execute(
+            """
+            INSERT OR IGNORE INTO software_packages (
+                id, name, vendor, category, description, homepage_url,
+                icon_key, status, review_status, created_at, updated_at
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                package["id"],
+                package["name"],
+                package["vendor"],
+                package["category"],
+                package["description"],
+                package["homepage_url"],
+                package["icon_key"],
+                package["status"],
+                package["review_status"],
+                now,
+                now,
+            ),
+        )
+        for variant in package["variants"]:
+            conn.execute(
+                """
+                INSERT OR IGNORE INTO software_variants (
+                    id, package_id, os_family, os_version_constraint, arch, version,
+                    installer_type, official_source_url, download_url, source_policy,
+                    sha256, signature_policy, install_phase, install_action,
+                    package_name, default_for_os, selection_priority,
+                    install_command_template, silent_args, requires_network, risk_level,
+                    review_status, enabled, notes, created_at, updated_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    variant["id"],
+                    package["id"],
+                    variant["os_family"],
+                    variant["os_version_constraint"],
+                    variant["arch"],
+                    variant["version"],
+                    variant["installer_type"],
+                    variant["official_source_url"],
+                    variant["download_url"],
+                    variant["source_policy"],
+                    variant["sha256"],
+                    variant["signature_policy"],
+                    variant["install_phase"],
+                    variant["install_action"],
+                    variant.get("package_name", ""),
+                    int(bool(variant.get("default_for_os", False))),
+                    int(variant.get("selection_priority", 0)),
+                    variant["install_command_template"],
+                    variant["silent_args"],
+                    int(variant["requires_network"]),
+                    variant["risk_level"],
+                    variant["review_status"],
+                    int(variant["enabled"]),
+                    variant["notes"],
+                    now,
+                    now,
+                ),
+            )
+    conn.execute(
+        """
+        UPDATE software_variants
+        SET installer_type = 'deb', updated_at = ?
+        WHERE id = 'chrome-ubuntu-amd64'
+          AND installer_type = 'apt'
+          AND install_action = 'download_deb'
+        """,
+        (now,),
+    )
+    # 旧数据库使用 INSERT OR IGNORE 初始化，已有默认软件元数据不会随代码自动升级。
+    # 这里仅同步项目内置默认项，不覆盖管理员后续自定义新增的软件。
+    conn.execute(
+        """
+        UPDATE software_variants
+        SET installer_type = 'office_odt',
+            official_source_url = 'https://learn.microsoft.com/deployoffice/overview-office-deployment-tool',
+            download_url = 'https://go.microsoft.com/fwlink/?linkid=2243204',
+            source_policy = 'official_vendor',
+            signature_policy = 'vendor_signed',
+            install_phase = 'windows_first_boot',
+            install_action = 'office_odt_install',
+            package_name = 'ProPlus2021Volume',
+            install_command_template = 'office_odt_configure',
+            silent_args = '',
+            review_status = 'approved',
+            enabled = 1,
+            notes = 'Office 2021 ProPlus 通过 Microsoft Office Deployment Tool 安装；仅适用于管理员自有合法批量授权/KMS 环境。',
+            updated_at = ?
+        WHERE id = 'office-windows-odt'
+        """,
+        (now,),
+    )
+    conn.execute(
+        """
+        UPDATE software_variants
+        SET version = '7.68.6',
+            installer_type = 'msi',
+            official_source_url = 'https://www.feishu.cn/hc/zh-CN/articles/360049067543-%E4%BD%BF%E7%94%A8-msi-%E6%96%87%E4%BB%B6%E6%89%B9%E9%87%8F%E9%83%A8%E7%BD%B2%E9%A3%9E%E4%B9%A6%E5%AE%A2%E6%88%B7%E7%AB%AF',
+            download_url = 'https://sf3-cn.feishucdn.com/obj/hera-cn/download/Feishu-win32_x64-7.68.6-signed.msi',
+            source_policy = 'admin_reviewed_download',
+            signature_policy = 'vendor_signed',
+            install_phase = 'windows_first_boot',
+            install_action = 'msi_install',
+            install_command_template = 'msi_install',
+            silent_args = '/qn /norestart',
+            review_status = 'approved',
+            enabled = 1,
+            notes = '按飞书官方 MSI 批量部署教程配置；客户端首次启动后直接从飞书 CDN 下载 MSI 并静默安装，SynaBoot 不托管安装包。',
+            updated_at = ?
+        WHERE id = 'feishu-windows-x64'
+        """,
+        (now,),
+    )
+    feishu_deb_url = os.environ.get("SYNABOOT_FEISHU_UBUNTU_DEB_URL", "").strip()
+    if feishu_deb_url:
+        conn.execute(
+            """
+            UPDATE software_variants
+            SET installer_type = 'deb',
+                download_url = ?,
+                source_policy = 'official_vendor',
+                signature_policy = 'vendor_signed',
+                install_phase = 'linux_first_boot',
+                install_action = 'download_deb',
+                install_command_template = 'apt_install_downloaded_deb',
+                review_status = 'approved',
+                enabled = 1,
+                notes = '通过管理员确认的飞书官方 Linux deb 直链安装；SynaBoot 不托管该安装包。',
+                updated_at = ?
+            WHERE id = 'feishu-ubuntu-amd64'
+            """,
+            (feishu_deb_url, now),
+        )
+    else:
+        existing_feishu = conn.execute(
+            """
+            SELECT download_url
+            FROM software_variants
+            WHERE id = 'feishu-ubuntu-amd64'
+              AND review_status = 'approved'
+              AND enabled = 1
+              AND installer_type = 'deb'
+              AND install_action = 'official_download'
+            """
+        ).fetchone()
+        existing_feishu_url = existing_feishu["download_url"].strip() if existing_feishu else ""
+        # 管理员可能已经在软件市场里维护了真实官方 deb 直链，但旧记录仍停留在
+        # official_download。此处只对 HTTPS、非 SynaBoot 托管、路径为 .deb 的飞书
+        # Ubuntu 变体做兼容迁移，避免把普通下载页误标为可执行安装源。
+        if existing_feishu_url and is_deb_download_url(existing_feishu_url) and not is_blocked_software_download_host(existing_feishu_url):
+            conn.execute(
+                """
+                UPDATE software_variants
+                SET source_policy = 'official_vendor',
+                    signature_policy = 'vendor_signed',
+                    install_phase = 'linux_first_boot',
+                    install_action = 'download_deb',
+                    install_command_template = 'apt_install_downloaded_deb',
+                    notes = '通过管理员在软件市场确认的飞书官方 Linux deb 直链安装；SynaBoot 不托管该安装包。',
+                    updated_at = ?
+                WHERE id = 'feishu-ubuntu-amd64'
+                """,
+                (now,),
+            )
+        conn.execute(
+            """
+            UPDATE software_variants
+            SET notes = '飞书 Ubuntu 自动安装需要配置 SYNABOOT_FEISHU_UBUNTU_DEB_URL 为官方 Linux deb 直链；下载页不是 deb 安装包，不能直接作为自动安装源。',
+                updated_at = ?
+            WHERE id = 'feishu-ubuntu-amd64'
+              AND install_action = 'official_download'
+            """,
+            (now,),
+        )
+    conn.commit()
+
+
+def ensure_software_profiles(conn: sqlite3.Connection) -> None:
+    now = int(time.time())
+    for profile in DEFAULT_SOFTWARE_PROFILES:
+        conn.execute(
+            """
+            INSERT OR IGNORE INTO software_profiles (
+                id, name, description, os_family, variant_ids, status,
+                review_status, risk_level, created_at, updated_at
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                profile["id"],
+                profile["name"],
+                profile["description"],
+                profile["os_family"],
+                json.dumps(profile["variant_ids"], ensure_ascii=False),
+                profile["status"],
+                profile["review_status"],
+                profile["risk_level"],
+                now,
+                now,
+            ),
+        )
+    conn.commit()
 
 
 def ensure_image_columns(conn: sqlite3.Connection) -> None:
@@ -353,10 +1184,10 @@ def json_response(handler: BaseHTTPRequestHandler, status: int, payload: object)
     handler.wfile.write(body)
 
 
-def text_response(handler: BaseHTTPRequestHandler, status: int, body: str) -> None:
+def text_response(handler: BaseHTTPRequestHandler, status: int, body: str, content_type: str = "text/plain; charset=utf-8") -> None:
     encoded = body.encode("utf-8")
     handler.send_response(status)
-    handler.send_header("Content-Type", "text/plain; charset=utf-8")
+    handler.send_header("Content-Type", content_type)
     handler.send_header("Content-Length", str(len(encoded)))
     handler.end_headers()
     handler.wfile.write(encoded)
@@ -498,6 +1329,179 @@ def source_role(category: str, kind: str, rel_path: str) -> str:
     if kind in {"linux-kernel", "initrd", "livefs", "wimboot", "bootmgr", "bcd", "boot-sdi", "wim"}:
         return "boot_artifact"
     return "repository_file"
+
+
+def source_group_key(rel_path: str, category: str) -> str:
+    if category == "linux":
+        return linux_base_dir(rel_path)
+    if category == "pe" and rel_path.startswith("pe/hotpe/"):
+        return "pe/hotpe"
+    if category == "windows" and rel_path.startswith("windows/win11/"):
+        return "windows/win11"
+    return rel_path.rsplit("/", 1)[0] if "/" in rel_path else ""
+
+
+def artifact_role_for(rel_path: str, kind: str) -> str:
+    if rel_path.endswith("/casper/vmlinuz"):
+        return "linux_kernel"
+    if rel_path.endswith("/casper/initrd"):
+        return "linux_initrd"
+    if "/casper/" in rel_path and rel_path.endswith(".squashfs"):
+        return "linux_livefs"
+    lower = rel_path.lower()
+    if lower.endswith("/wimboot"):
+        return "hotpe_wimboot"
+    if lower.endswith("/bootmgr"):
+        return "hotpe_bootmgr"
+    if lower.endswith("/bootx64.efi"):
+        return "bootx64_efi"
+    if lower.endswith("/bcd"):
+        return "windows_bcd"
+    if lower.endswith("/boot.sdi"):
+        return "windows_boot_sdi"
+    if lower.endswith("/boot.wim"):
+        return "windows_boot_wim"
+    return kind or "repository_file"
+
+
+def detect_image_strategy(row: dict) -> dict:
+    rel_path = row.get("relative_path") or row.get("rel_path", "")
+    name = (row.get("name") or rel_path.rsplit("/", 1)[-1]).lower()
+    category = row.get("category", "")
+    kind = row.get("kind", "")
+    target = f"{rel_path.lower()} {name}"
+    result = {
+        "os_family": "unknown",
+        "detected_distro": "",
+        "detected_version": "",
+        "detected_arch": "",
+        "detection_confidence": "low",
+        "strategy_key": "unsupported_source_only",
+        "strategy_display_name": "Unsupported source only",
+        "strategy_status": "unsupported_source_only",
+        "inventory_role": "repository_file",
+        "object_type": "repository_file",
+        "visibility": "detail",
+        "artifact_role": artifact_role_for(rel_path, kind),
+        "parent_relative_path": "",
+        "detection_status": "unknown",
+        "detection_strategy": "path_heuristic",
+        "detection_evidence": [],
+        "source_group": source_group_key(rel_path, category),
+    }
+    if kind == "iso" or row.get("source_role") in {"source_iso", "windows_source_iso"}:
+        result["inventory_role"] = "source_iso"
+        result["object_type"] = "source_image"
+        result["visibility"] = "primary"
+    elif row.get("source_role") == "boot_artifact":
+        result["inventory_role"] = "detail_artifact"
+        result["object_type"] = "derived_boot_artifact"
+        result["visibility"] = "detail"
+    if category == "windows" and kind == "iso":
+        result.update(
+            {
+                "os_family": "windows",
+                "detected_distro": "windows",
+                "detection_confidence": "medium",
+                "detection_status": "detected",
+                "detection_evidence": ["path category is windows", "source file is iso"],
+                "strategy_key": "windows_hotpe_assisted",
+                "strategy_display_name": "Windows via HotPE",
+                "strategy_status": "ready" if row.get("boot_readiness") == "needs_hotpe" else "needs_hotpe",
+            }
+        )
+    elif category == "pe" and kind == "iso":
+        result.update(
+            {
+                "os_family": "windows_pe",
+                "detected_distro": "hotpe",
+                "detection_confidence": "medium" if "hotpe" in target else "low",
+                "detection_status": "detected" if "hotpe" in target else "partial",
+                "detection_evidence": ["path category is pe", "source file is iso"],
+                "strategy_key": "hotpe_wimboot",
+                "strategy_display_name": "HotPE wimboot",
+                "strategy_status": row.get("boot_readiness") or "incomplete",
+            }
+        )
+    elif category == "linux" and kind == "iso" and ("proxmox" in target or re.search(r"\bpve\b", target)):
+        result.update(
+            {
+                "os_family": "linux",
+                "detected_distro": "proxmox-ve",
+                "detection_confidence": "medium",
+                "detection_status": "detected",
+                "detection_evidence": ["filename/path indicates proxmox or pve", "strategy requires research"],
+                "strategy_key": "research_required",
+                "strategy_display_name": "Research required",
+                "strategy_status": "research_required",
+            }
+        )
+    elif category == "linux" and kind == "iso" and "debian" in target:
+        version_match = re.search(r"debian[-_ ]([0-9]+(?:\.[0-9]+)*)", target)
+        result.update(
+            {
+                "os_family": "linux",
+                "detected_distro": "debian",
+                "detected_version": version_match.group(1) if version_match else "",
+                "detection_confidence": "medium",
+                "detection_status": "detected",
+                "detection_evidence": ["filename/path indicates debian", "official netboot strategy not implemented"],
+                "strategy_key": "research_required",
+                "strategy_display_name": "Debian netboot research required",
+                "strategy_status": "research_required",
+            }
+        )
+    elif category == "linux" and kind == "iso" and any(token in target for token in ["rhel", "redhat", "red hat", "rocky", "almalinux", "alma", "centos"]):
+        distro = "rhel-family"
+        if "rocky" in target:
+            distro = "rocky-linux"
+        elif "almalinux" in target or "alma" in target:
+            distro = "almalinux"
+        elif "centos" in target:
+            distro = "centos"
+        result.update(
+            {
+                "os_family": "linux",
+                "detected_distro": distro,
+                "detection_confidence": "medium",
+                "detection_status": "detected",
+                "detection_evidence": ["filename/path indicates rhel-family installer", "anaconda install tree strategy not implemented"],
+                "strategy_key": "research_required",
+                "strategy_display_name": "Anaconda install tree research required",
+                "strategy_status": "research_required",
+            }
+        )
+    elif category == "linux" and kind == "iso" and "ubuntu" in target:
+        version_match = re.search(r"ubuntu[-_ ]([0-9]+(?:\.[0-9]+){1,2})", target)
+        arch = "amd64" if "amd64" in target or "x86_64" in target else ""
+        result.update(
+            {
+                "os_family": "linux",
+                "detected_distro": "ubuntu",
+                "detected_version": version_match.group(1) if version_match else "",
+                "detected_arch": arch,
+                "detection_confidence": "medium",
+                "detection_status": "detected",
+                "detection_evidence": ["filename/path indicates ubuntu", "linux casper strategy candidate"],
+                "strategy_key": "ubuntu_desktop_nfs_livefs",
+                "strategy_display_name": "Ubuntu Desktop NFS livefs",
+                "strategy_status": row.get("boot_readiness") or "incomplete",
+            }
+        )
+    elif category == "linux" and kind == "iso":
+        result.update(
+            {
+                "os_family": "linux",
+                "detection_confidence": "low",
+                "detection_status": "partial",
+                "detection_evidence": ["path category is linux", "no reviewed distro strategy matched"],
+                "strategy_key": "research_required",
+                "strategy_display_name": "Research required",
+                "strategy_status": "research_required",
+            }
+        )
+    result["os_distribution"] = result["detected_distro"]
+    return result
 
 
 def preparation_status(category: str, kind: str, rel_path: str, boot_state: str, missing: list[str]) -> str:
@@ -729,7 +1733,71 @@ def image_payload(row: dict) -> dict:
         row["missing_artifacts"] = json.loads(row.get("missing_artifacts") or "[]")
     except json.JSONDecodeError:
         row["missing_artifacts"] = []
+    row.update(detect_image_strategy(row))
+    row["is_primary_inventory"] = row.get("visibility") == "primary"
     return row
+
+
+def images_inventory_payload(rows: list[dict]) -> dict:
+    artifacts_by_group: dict[str, list[dict]] = {}
+    source_images: list[dict] = []
+    for row in rows:
+        if row.get("is_primary_inventory"):
+            source_images.append(dict(row))
+        else:
+            artifacts_by_group.setdefault(row.get("source_group") or "", []).append(row)
+
+    source_by_group = {
+        source.get("source_group") or "": source.get("relative_path") or source.get("rel_path") or ""
+        for source in source_images
+    }
+    for source in source_images:
+        group = source.get("source_group") or ""
+        artifacts = artifacts_by_group.get(group, [])
+        parent_relative_path = source.get("relative_path") or source.get("rel_path") or ""
+        source["artifact_count"] = len(artifacts)
+        source["artifacts"] = [
+            {
+                "id": artifact.get("id", ""),
+                "object_type": artifact.get("object_type", "derived_boot_artifact"),
+                "name": artifact.get("name", ""),
+                "parent_relative_path": parent_relative_path,
+                "relative_path": artifact.get("relative_path") or artifact.get("rel_path", ""),
+                "kind": artifact.get("kind", ""),
+                "artifact_role": artifact.get("artifact_role", ""),
+                "size_bytes": artifact.get("size_bytes", 0),
+                "boot_readiness": artifact.get("boot_readiness", ""),
+                "preparation_status": artifact.get("preparation_status", ""),
+                "source_role": artifact.get("source_role", ""),
+            }
+            for artifact in artifacts
+        ]
+
+    derived_artifacts = []
+    for row in rows:
+        if row.get("is_primary_inventory"):
+            continue
+        artifact = dict(row)
+        artifact["parent_relative_path"] = source_by_group.get(artifact.get("source_group") or "", "")
+        derived_artifacts.append(artifact)
+
+    return {
+        "schema_version": "synaboot.images.iso-first.v1",
+        "inventory_mode": "source_iso_first",
+        "compatibility_mode": "legacy_images_retained",
+        "images": rows,
+        "source_images": source_images,
+        "artifacts": derived_artifacts,
+        "derived_artifacts": derived_artifacts,
+        "summary": {
+            "total_files": len(rows),
+            "source_image_count": len(source_images),
+            "artifact_count": sum(1 for row in rows if not row.get("is_primary_inventory")),
+            "ready_source_count": sum(1 for row in source_images if row.get("strategy_status") in {"ready", "needs_hotpe"}),
+            "research_required_count": sum(1 for row in source_images if row.get("strategy_status") == "research_required"),
+            "unsupported_source_count": sum(1 for row in source_images if row.get("strategy_status") == "unsupported_source_only"),
+        },
+    }
 
 
 def get_image(image_id: str) -> dict | None:
@@ -978,6 +2046,69 @@ def nfs_boot_source(base: str) -> str:
     return f"{SYNABOOT_NFS_SERVER}:/{share_name}"
 
 
+def boot_target_catalog(_rows: list[dict] | None = None) -> list[dict]:
+    rows = menu_rows(_rows)
+    targets: list[dict] = []
+    if windows_wimboot_ready(rows):
+        targets.append(
+            {
+                "target": "windows_setup",
+                "label": "Windows installer",
+                "kind": "windows",
+                "software_assignment_enabled": True,
+                "postinstall_status": "setupcomplete_helper_ready",
+                "postinstall_detail": "Windows 使用 HotPE/WinPE 显式注入 SetupComplete.cmd，首次启动后由 runner 从官方来源下载并安装软件。",
+            }
+        )
+    if hotpe_menu_ready(rows):
+        targets.append(
+            {
+                "target": "hotpe",
+                "label": "HotPE recovery environment",
+                "kind": "hotpe",
+                "software_assignment_enabled": False,
+                "postinstall_status": "not_applicable",
+                "postinstall_detail": "HotPE 是维护/安装辅助环境，不作为普通业务软件的自动安装目标。",
+            }
+        )
+    linux_entries = linux_boot_entries(rows)
+    for index, entry in enumerate(linux_entries, start=1):
+        label = f"linux_{ipxe_label(entry['base'])}"
+        targets.append(
+            {
+                "target": label,
+                "label": entry["base"],
+                "kind": "linux",
+                "software_assignment_enabled": True,
+                "postinstall_status": "nocloud_ready_pending_client_verification",
+                "postinstall_detail": "Ubuntu/Linux 使用 NoCloud autoinstall late-commands 写入首次启动 runner，客户端从官方来源下载软件。",
+            }
+        )
+    return targets
+
+
+def boot_target_label(target: str, _rows: list[dict] | None = None) -> str:
+    for item in boot_target_catalog(_rows):
+        if item["target"] == target:
+            return str(item["label"])
+    return ""
+
+
+def flashpxe_console_lines() -> list[str]:
+    return [
+        "console --x 1024 --y 768 || echo Console resize skipped",
+        "console --picture ${boot-url}/flashpxe-logo.png || echo FlashPXE picture skipped",
+        "colour --basic 0 --rgb 0x000000 0 || echo Colour command skipped",
+        "colour --basic 6 --rgb 0x00aaaa 6 || echo Colour command skipped",
+        "colour --basic 7 --rgb 0xffffff 7 || echo Colour command skipped",
+        "colour --basic 1 --rgb 0x00aaaa 1 || echo Colour command skipped",
+        "cpair --foreground 7 --background 0 0 || echo Colour pair skipped",
+        "cpair --foreground 6 --background 0 1 || echo Colour pair skipped",
+        "cpair --foreground 7 --background 1 2 || echo Colour pair skipped",
+        "cpair --foreground 6 --background 0 3 || echo Colour pair skipped",
+    ]
+
+
 def write_menu(_rows: list[dict] | None = None) -> str:
     ensure_dirs()
     rows = menu_rows(_rows)
@@ -998,30 +2129,48 @@ def write_menu(_rows: list[dict] | None = None) -> str:
         "set boot-url ${base-url}/boot",
         "set image-url ${base-url}/images",
         "isset ${platform} || set platform unknown",
+        "isset ${synaboot-postinstall-args} || set synaboot-postinstall-args",
         "",
         ":start",
-        "menu SynaBoot Deployment Console",
-        "item --gap --          ----------------------------------------",
-        "item --gap --          Phase 2 HTTP Boot | ${platform} | ${base-url}",
-        "item --gap --          Zero-intrusion mode: DHCP/ProxyDHCP/TFTP disabled",
-        "item --gap --          ----------------------------------------",
+        *flashpxe_console_lines(),
+        "menu FlashPXE",
+        "item --gap --                                      FlashPXE",
+        "item --gap --                                A fast netboot console",
+        "item --gap --          ${server-ip}    ${platform}    ${base-url}",
+        "item --gap --          ----------------------------------------------------------------------------",
+        "item --gap --          Deployment Mode",
+        "item --key a manual_menu   (A) Active install: choose an image manually  [default]",
+        "item --key p passive_wait  (P) Passive install: wait for admin assignment",
+        "item --gap --          ----------------------------------------------------------------------------",
+        "item --key s shell         (S) Open iPXE shell",
+        "item --key r reboot        (R) Reboot client",
+        "item --key o poweroff      (O) Power off client",
+        "choose --default manual_menu --timeout 15000 target && goto ${target} || goto start",
+        "",
+        ":manual_menu",
+        "menu FlashPXE",
+        "item --gap --                                      FlashPXE",
+        "item --gap --                                Active install menu",
+        "item --gap --          ${server-ip}    ${platform}    ${base-url}",
+        "item --gap --          ----------------------------------------------------------------------------",
     ]
     if windows_ready:
         lines.extend(
             [
-                "item --gap --          [ Windows ]",
-                f"item --key w windows_setup  (W) Boot Windows installer{windows_suffix}",
+                "item --gap --          ISO Boot Menu",
+                "item --gap --          SIZE      IMAGE",
+                f"item --key w windows_setup  (W) Windows installer{windows_suffix}",
             ]
         )
     if hotpe_ready:
         lines.extend(
             [
-                "item --gap --          [ PE / Recovery ]",
-                f"item --key h hotpe          (H) Boot HotPE recovery environment{hotpe_suffix}",
+                f"item --key h hotpe          (H) HotPE recovery environment{hotpe_suffix}",
             ]
         )
     if linux_entries:
-        lines.append("item --gap --          [ Linux Deployment ]")
+        if not windows_ready and not hotpe_ready:
+            lines.extend(["item --gap --          ISO Boot Menu", "item --gap --          SIZE      IMAGE"])
         for entry in linux_entries:
             key = entry["key"]
             key_prefix = f"({key}) " if key else "    "
@@ -1037,7 +2186,9 @@ def write_menu(_rows: list[dict] | None = None) -> str:
         )
     lines.extend(
         [
-            "item --gap --          [ Tools ]",
+            "item --gap --          ----------------------------------------------------------------------------",
+            "item --gap --          Tools Menu",
+            "item --key b start          (B) Back to deployment mode selector",
             "item --key s shell          (S) Open iPXE shell",
             "item --key r reboot         (R) Reboot client",
             "item --key p poweroff       (P) Power off client",
@@ -1046,6 +2197,22 @@ def write_menu(_rows: list[dict] | None = None) -> str:
     lines.extend(
         [
             f"choose --default {default_target} --timeout 15000 target && goto ${{target}} || goto start",
+            "",
+            ":passive_wait",
+            "echo Registering this client for admin-controlled deployment...",
+            "chain --replace ${base-url}/api/ipxe/register?mac=${net0/mac}&uuid=${uuid}&serial=${serial}&asset=${asset}&manufacturer=${manufacturer}&product=${product}&platform=${platform}&buildarch=${buildarch}&ip=${net0/ip} || goto passive_failed",
+            "",
+            ":passive_failed",
+            "echo Could not enter passive deployment mode.",
+            "echo Press B to return, R to reboot, O to power off, or wait to retry.",
+            "menu FlashPXE Passive install error",
+            "item --key b start          (B) Back to deployment mode selector",
+            "item --key r reboot         (R) Reboot client",
+            "item --key o poweroff       (O) Power off client",
+            "item retry                  Retry passive registration",
+            "choose --default retry --timeout 5000 target && goto ${target} || goto retry",
+            ":retry",
+            "goto passive_wait",
             "",
             ":hotpe",
         ]
@@ -1056,9 +2223,9 @@ def write_menu(_rows: list[dict] | None = None) -> str:
                 "echo Loading HotPE...",
                 "imgfree",
                 "kernel ${image-url}/pe/hotpe/wimboot pause",
-                "initrd -n bootmgfw.efi ${image-url}/windows/win11/boot/bootx64.efi bootmgfw.efi",
-                "initrd -n BCD ${image-url}/windows/win11/boot/BCD BCD",
-                "initrd -n boot.sdi ${image-url}/windows/win11/boot/boot.sdi boot.sdi",
+                "initrd -n bootmgfw.efi ${image-url}/pe/hotpe/bootx64.efi bootmgfw.efi",
+                "initrd -n BCD ${image-url}/pe/hotpe/BCD BCD",
+                "initrd -n boot.sdi ${image-url}/pe/hotpe/boot.sdi boot.sdi",
                 "initrd -n boot.wim ${image-url}/pe/hotpe/boot.wim boot.wim",
                 "boot || goto boot_failed",
             ]
@@ -1085,6 +2252,9 @@ def write_menu(_rows: list[dict] | None = None) -> str:
             ]
         )
     for entry in linux_entries:
+        kernel_args = f"ip=dhcp boot=casper netboot=nfs nfsroot={nfs_boot_source(entry['base'])}"
+        if "ubuntu-24.04" in entry["base"]:
+            kernel_args = f"{kernel_args} nomodeset"
         lines.extend(
             [
                 "",
@@ -1092,7 +2262,7 @@ def write_menu(_rows: list[dict] | None = None) -> str:
                 f"echo Loading Ubuntu/Linux NFS livefs from {ipxe_text(entry['base'])}...",
                 f"echo NFS source: {nfs_boot_source(entry['base'])}",
                 "echo This mode mounts casper/*.squashfs from the read-only NFS export.",
-                f"kernel ${{base-url}}/images/{ipxe_url_path(entry['kernel'])} ip=dhcp boot=casper netboot=nfs nfsroot={nfs_boot_source(entry['base'])} ---",
+                f"kernel ${{base-url}}/images/{ipxe_url_path(entry['kernel'])} {kernel_args} ${{synaboot-postinstall-args}} --- quiet splash",
                 f"initrd ${{base-url}}/images/{ipxe_url_path(entry['initrd'])}",
                 "boot || goto boot_failed",
             ]
@@ -1143,6 +2313,7 @@ item --gap --          ----------------------------------------
 item --gap --          [ No Ready Boot Entries ]
 item --gap --          Prepare HotPE or Linux images from the admin UI.
 item --gap --          [ Tools ]
+item --key b start          (B) Back to deployment mode selector
 item --key s shell          (S) Open iPXE shell
 item --key r reboot         (R) Reboot client
 item --key p poweroff       (P) Power off client
@@ -1164,6 +2335,2734 @@ echo Press any key to return to the deployment console.
 prompt
 goto start
 """
+
+
+def query_value(query: dict[str, list[str]], key: str, default: str = "") -> str:
+    value = query.get(key, [default])[0]
+    return str(value or default).strip()[:160]
+
+
+def hash_session_token(token: str) -> str:
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+
+def token_is_valid(provided: str, expected_hash: str) -> bool:
+    if not provided or not expected_hash:
+        return False
+    return hmac.compare_digest(hash_session_token(provided), expected_hash)
+
+
+def ipxe_client_params(handler: BaseHTTPRequestHandler) -> dict:
+    parsed = urlparse(handler.path)
+    query = parse_qs(parsed.query, keep_blank_values=True)
+    observed_ip = handler.client_address[0]
+    mac = query_value(query, "mac").lower()
+    uuid_value = query_value(query, "uuid").lower()
+    return {
+        "mac": mac,
+        "uuid": uuid_value,
+        "serial": query_value(query, "serial"),
+        "asset": query_value(query, "asset"),
+        "manufacturer": query_value(query, "manufacturer"),
+        "product": query_value(query, "product"),
+        "platform": query_value(query, "platform", "unknown"),
+        "buildarch": query_value(query, "buildarch", "unknown"),
+        "ip": observed_ip,
+        "claimed_ip": query_value(query, "ip"),
+    }
+
+
+def register_client_session(handler: BaseHTTPRequestHandler) -> dict:
+    params = ipxe_client_params(handler)
+    now = int(time.time())
+    expires_at = now + 900
+    conn = connect_db()
+    evidence = {
+        "source": "ipxe_register",
+        "observed_ip": params["ip"],
+        "claimed_ip": params["claimed_ip"],
+        "user_agent": handler.headers.get("User-Agent", "")[:160],
+    }
+    session_id = uuid.uuid4().hex
+    token = uuid.uuid4().hex
+    conn.execute(
+        """
+        INSERT INTO client_sessions (
+            session_id, session_token_hash, mac, ip, uuid, serial, asset,
+            manufacturer, product, platform, buildarch, state,
+            selected_target, selected_label, first_seen_at, last_seen_at,
+            expires_at, evidence
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            session_id,
+            hash_session_token(token),
+            params["mac"],
+            params["ip"],
+            params["uuid"],
+            params["serial"],
+            params["asset"],
+            params["manufacturer"],
+            params["product"],
+            params["platform"],
+            params["buildarch"],
+            "waiting_assignment",
+            "",
+            "",
+            now,
+            now,
+            expires_at,
+            json.dumps(evidence, ensure_ascii=False),
+        ),
+    )
+    conn.commit()
+    conn.close()
+    return {"session_id": session_id, "token": token, **params}
+
+
+def passive_register_script(handler: BaseHTTPRequestHandler) -> str:
+    session = register_client_session(handler)
+    return f"""#!ipxe
+
+set server-ip {SERVER_IP}
+set boot-url http://${{server-ip}}:{SYNABOOT_PORT}/boot
+set session-id {session['session_id']}
+set session-token {session['token']}
+set base-url http://{SERVER_IP}:{SYNABOOT_PORT}
+
+:wait
+{chr(10).join(flashpxe_console_lines())}
+menu FlashPXE
+item --gap --                                      FlashPXE
+item --gap --                           Passive install waiting room
+item --gap --          Waiting for admin deployment assignment
+item --gap --          MAC: {ipxe_text(session.get('mac') or 'unknown')}
+item --gap --          UUID: {ipxe_text(session.get('uuid') or 'unknown')}
+item --gap --          Session: {session['session_id']}
+item --gap --          ----------------------------------------------------------------------------
+item --key b manual    (B) Return to deployment mode selector
+item --key s shell     (S) Open iPXE shell
+item --key r reboot    (R) Reboot client
+item --key o poweroff  (O) Power off client
+item refresh           Refresh assignment status
+choose --default refresh --timeout 5000 target && goto ${{target}} || goto refresh
+
+:refresh
+chain --replace ${{base-url}}/api/ipxe/wait?session_id=${{session-id}}&token=${{session-token}} || goto wait
+
+:manual
+chain --replace ${{base-url}}/boot/menu.ipxe || goto wait
+
+:shell
+shell
+goto wait
+
+:reboot
+reboot
+
+:poweroff
+poweroff
+"""
+
+
+def assigned_boot_script(target: str, assignment_id: str = "", session_id: str = "", boot_token: str = "") -> str:
+    rows = menu_rows()
+    targets = {item["target"]: item for item in boot_target_catalog(rows)}
+    target_info = targets.get(target)
+    if target_info is None:
+        return passive_wait_script("", "", "Assigned target is no longer ready.")
+    menu_lines = read_menu().splitlines()
+    if menu_lines and menu_lines[0].strip() == "#!ipxe":
+        menu_lines = menu_lines[1:]
+    menu = "\n".join(menu_lines)
+    assignment_token = ipxe_text(boot_token)
+    base_assignment_url = f"${{base-url}}/api/postinstall/assignments/{ipxe_text(assignment_id)}"
+    prelude_lines = [
+        f"set synaboot-assignment-id {ipxe_text(assignment_id)}",
+        f"set synaboot-session-id {ipxe_text(session_id)}",
+        f"set synaboot-boot-token {assignment_token}",
+    ]
+    if target_info["kind"] == "linux":
+        prelude_lines.extend(
+            [
+                f"set synaboot-seed-url {base_assignment_url}/nocloud/{ipxe_text(session_id)}/{assignment_token}/",
+                f"set synaboot-plan-url {base_assignment_url}/plan?session_id={ipxe_text(session_id)}&token={assignment_token}",
+                f"set synaboot-runner-url {base_assignment_url}/runner.sh?session_id={ipxe_text(session_id)}&token={assignment_token}",
+                "set synaboot-postinstall-args autoinstall ds=nocloud-net\\;s=${synaboot-seed-url} synaboot.assignment_id=${synaboot-assignment-id} synaboot.session_id=${synaboot-session-id} synaboot.plan_url=${synaboot-plan-url} synaboot.runner_url=${synaboot-runner-url}",
+            ]
+        )
+    elif target_info["kind"] == "windows":
+        prelude_lines.extend(
+            [
+                f"set synaboot-plan-url {base_assignment_url}/plan?session_id={ipxe_text(session_id)}&token={assignment_token}",
+                f"set synaboot-windows-runner-url {base_assignment_url}/runner.ps1?session_id={ipxe_text(session_id)}&token={assignment_token}",
+                f"set synaboot-setupcomplete-url {base_assignment_url}/setupcomplete.cmd?session_id={ipxe_text(session_id)}&token={assignment_token}",
+                "set synaboot-postinstall-args",
+            ]
+        )
+    else:
+        prelude_lines.append("set synaboot-postinstall-args")
+    return f"""#!ipxe
+
+set server-ip {SERVER_IP}
+set base-url http://${{server-ip}}:{SYNABOOT_PORT}
+set boot-url ${{base-url}}/boot
+set image-url ${{base-url}}/images
+isset ${{platform}} || set platform unknown
+{chr(10).join(prelude_lines)}
+
+echo FlashPXE admin assignment received: {ipxe_text(target)}
+echo Assignment: {ipxe_text(assignment_id)}
+goto {target}
+
+{menu}
+"""
+
+
+def passive_wait_script(session_id: str, token: str, message: str = "No assignment yet.") -> str:
+    sid = ipxe_text(session_id or "unknown")
+    safe_message = ipxe_text(message)
+    return f"""#!ipxe
+
+set server-ip {SERVER_IP}
+set boot-url http://${{server-ip}}:{SYNABOOT_PORT}/boot
+set session-id {sid}
+set session-token {ipxe_text(token)}
+set base-url http://{SERVER_IP}:{SYNABOOT_PORT}
+
+:wait
+{chr(10).join(flashpxe_console_lines())}
+menu FlashPXE
+item --gap --                                      FlashPXE
+item --gap --                           Passive install waiting room
+item --gap --          {safe_message}
+item --gap --          Session: {sid}
+item --gap --          Waiting for admin deployment assignment
+item --gap --          ----------------------------------------------------------------------------
+item --key b manual    (B) Return to deployment mode selector
+item --key s shell     (S) Open iPXE shell
+item --key r reboot    (R) Reboot client
+item --key o poweroff  (O) Power off client
+item refresh           Refresh assignment status
+choose --default refresh --timeout 5000 target && goto ${{target}} || goto refresh
+
+:refresh
+chain --replace ${{base-url}}/api/ipxe/wait?session_id=${{session-id}}&token=${{session-token}} || goto wait
+
+:manual
+chain --replace ${{base-url}}/boot/menu.ipxe || goto wait
+
+:shell
+shell
+goto wait
+
+:reboot
+reboot
+
+:poweroff
+poweroff
+"""
+
+
+def passive_wait_response(handler: BaseHTTPRequestHandler) -> str:
+    query = parse_qs(urlparse(handler.path).query, keep_blank_values=True)
+    session_id = query_value(query, "session_id")
+    token = query_value(query, "token")
+    now = int(time.time())
+    conn = connect_db()
+    row = conn.execute("SELECT * FROM client_sessions WHERE session_id = ?", (session_id,)).fetchone()
+    if row is None or not token_is_valid(token, row["session_token_hash"]):
+        conn.close()
+        return passive_wait_script("", "", "Session expired. Please re-enter passive mode.")
+    conn.execute(
+        """
+        UPDATE client_sessions
+        SET last_seen_at = ?, expires_at = ?,
+            state = CASE WHEN selected_target = '' THEN 'waiting_assignment' ELSE state END
+        WHERE session_id = ?
+        """,
+        (now, now + 900, session_id),
+    )
+    conn.commit()
+    selected_target = row["selected_target"]
+    assignment = latest_assignment_for_session(session_id) if selected_target else None
+    if selected_target:
+        conn.execute(
+            "UPDATE client_sessions SET state = 'booting', last_seen_at = ?, expires_at = ? WHERE session_id = ?",
+            (now, now + 900, session_id),
+        )
+        conn.commit()
+    conn.close()
+    if selected_target:
+        if not assignment:
+            return passive_wait_script(session_id, token, "Assigned task is missing. Please wait for admin.")
+        try:
+            boot_token = issue_assignment_boot_token(assignment["id"], session_id, token)
+        except ValueError:
+            return passive_wait_script("", "", "Session expired. Please re-enter passive mode.")
+        return assigned_boot_script(selected_target, assignment["id"], session_id, boot_token)
+    return passive_wait_script(session_id, token)
+
+
+def client_session_payload(row: sqlite3.Row) -> dict:
+    now = int(time.time())
+    evidence = json.loads(row["evidence"] or "{}")
+    state = row["state"]
+    if row["expires_at"] < now:
+        state = "timed_out"
+    latest_assignment = latest_assignment_for_session(row["session_id"])
+    assignment_summary = None
+    if latest_assignment:
+        events = list_assignment_session_events(latest_assignment["id"], row["session_id"], limit=10)
+        variants = latest_assignment.get("resolved_software_plan", {}).get("variants", [])
+        assignment_summary = {
+            "id": latest_assignment["id"],
+            "boot_target": latest_assignment["boot_target"],
+            "boot_label": latest_assignment["boot_label"],
+            "status": latest_assignment["status"],
+            "session_event_summary": assignment_event_summary(events),
+            "software_count": len(variants),
+            "software_labels": [
+                variant.get("package_name") or variant.get("id", "")
+                for variant in variants
+                if variant.get("package_name") or variant.get("id")
+            ],
+            "event_summary": assignment_event_summary(events),
+        }
+    return {
+        "session_id": row["session_id"],
+        "mac": row["mac"],
+        "ip": row["ip"],
+        "uuid": row["uuid"],
+        "serial": row["serial"],
+        "asset": row["asset"],
+        "manufacturer": row["manufacturer"],
+        "product": row["product"],
+        "platform": row["platform"],
+        "buildarch": row["buildarch"],
+        "state": state,
+        "selected_target": row["selected_target"],
+        "selected_label": row["selected_label"],
+        "first_seen_at": row["first_seen_at"],
+        "last_seen_at": row["last_seen_at"],
+        "expires_at": row["expires_at"],
+        "online": row["expires_at"] >= now,
+        "evidence": evidence,
+        "latest_assignment": assignment_summary,
+    }
+
+
+def redacted_client_session_payload(row: sqlite3.Row) -> dict:
+    full = client_session_payload(row)
+    return {
+        "session_id": full["session_id"],
+        "state": full["state"],
+        "selected_target": full["selected_target"],
+        "selected_label": full["selected_label"],
+        "platform": full["platform"],
+        "buildarch": full["buildarch"],
+        "first_seen_at": full["first_seen_at"],
+        "last_seen_at": full["last_seen_at"],
+        "expires_at": full["expires_at"],
+        "online": full["online"],
+        "redacted": True,
+    }
+
+
+def list_client_sessions(include_private: bool = False) -> dict:
+    conn = connect_db()
+    rows = conn.execute("SELECT * FROM client_sessions ORDER BY last_seen_at DESC LIMIT 100").fetchall()
+    sessions = [client_session_payload(row) if include_private else redacted_client_session_payload(row) for row in rows]
+    conn.close()
+    return {
+        "schema_version": "synaboot.client-sessions.v1",
+        "access": "admin" if include_private else "redacted",
+        "sessions": sessions,
+        "assignable_targets": boot_target_catalog(),
+        "summary": {
+            "total": len(sessions),
+            "online": sum(1 for item in sessions if item["online"]),
+            "waiting": sum(1 for item in sessions if item["online"] and item["state"] == "waiting_assignment"),
+            "assigned": sum(1 for item in sessions if item["online"] and bool(item["selected_target"])),
+        },
+    }
+
+
+def get_client_session(session_id: str) -> dict | None:
+    conn = connect_db()
+    row = conn.execute("SELECT * FROM client_sessions WHERE session_id = ?", (session_id,)).fetchone()
+    conn.close()
+    return client_session_payload(row) if row is not None else None
+
+
+def admin_session_payload(authenticated: bool) -> dict:
+    return {
+        "schema_version": "synaboot.admin-session.v1",
+        "admin_configured": bool(ADMIN_TOKEN),
+        "authenticated": authenticated,
+        "write_actions": {
+            "client_assignment": authenticated,
+            "local_iso_scan": authenticated,
+            "menu_generate": authenticated,
+            "software_market": authenticated,
+        },
+        "image_drop_folder": IMAGES_DIR.as_posix(),
+        "auto_refresh_seconds": 300,
+    }
+
+
+def list_software_profiles(os_family: str | None = None) -> list[dict]:
+    conn = connect_db()
+    if os_family:
+        rows = conn.execute(
+            "SELECT * FROM software_profiles WHERE os_family = ? ORDER BY name COLLATE NOCASE",
+            (os_family,),
+        ).fetchall()
+    else:
+        rows = conn.execute("SELECT * FROM software_profiles ORDER BY os_family, name COLLATE NOCASE").fetchall()
+    conn.close()
+    variants_by_id = {variant["id"]: variant for variant in list_software_variants()}
+    profiles: list[dict] = []
+    for row in rows:
+        variant_ids = json.loads(row["variant_ids"] or "[]")
+        variants = [variants_by_id[variant_id] for variant_id in variant_ids if variant_id in variants_by_id]
+        profiles.append(
+            {
+                "id": row["id"],
+                "name": row["name"],
+                "description": row["description"],
+                "os_family": row["os_family"],
+                "variant_ids": variant_ids,
+                "variants": variants,
+                "status": row["status"],
+                "review_status": row["review_status"],
+                "risk_level": row["risk_level"],
+                "assignable": row["status"] == "available"
+                and row["review_status"] in ASSIGNABLE_SOFTWARE_REVIEW_STATUSES
+                and all(variant.get("assignable") for variant in variants)
+                and len(variants) == len(variant_ids),
+                "created_at": row["created_at"],
+                "updated_at": row["updated_at"],
+            }
+        )
+    return profiles
+
+
+def create_software_profile(payload: dict) -> dict:
+    profile_id = validate_software_id(str(payload.get("id", "")), "software_profile_id")
+    name = bounded_text(payload.get("name"), 120)
+    description = bounded_text(payload.get("description"), 500)
+    os_family = bounded_text(payload.get("os_family"), 40)
+    risk_level = bounded_text(payload.get("risk_level"), 40) or "medium"
+    variant_ids = payload.get("variant_ids", [])
+    if not name:
+        raise ValueError("software_profile_name_required")
+    if os_family not in {"windows", "ubuntu"}:
+        raise ValueError("invalid_os_family")
+    if risk_level not in SOFTWARE_RISK_LEVELS:
+        raise ValueError("invalid_risk_level")
+    if not isinstance(variant_ids, list):
+        raise ValueError("software_profile_variant_ids_required")
+    variant_ids = list(dict.fromkeys(str(item).strip() for item in variant_ids if str(item).strip()))
+    if not variant_ids:
+        raise ValueError("software_profile_variants_required")
+
+    variants_by_id = {variant["id"]: variant for variant in list_software_variants()}
+    errors: list[str] = []
+    for variant_id in variant_ids:
+        variant = variants_by_id.get(variant_id)
+        if variant is None:
+            errors.append(f"software_variant_not_found:{variant_id}")
+            continue
+        if variant.get("os_family") != os_family:
+            errors.append(f"software_variant_incompatible:{variant_id}")
+        if not variant.get("assignable"):
+            errors.append(f"software_variant_not_assignable:{variant_id}:{','.join(variant.get('blocked_reasons', []))}")
+    if errors:
+        raise ValueError(";".join(errors))
+
+    now = int(time.time())
+    conn = connect_db()
+    exists = conn.execute("SELECT id FROM software_profiles WHERE id = ?", (profile_id,)).fetchone()
+    if exists is not None:
+        conn.close()
+        raise ValueError("software_profile_already_exists")
+    conn.execute(
+        """
+        INSERT INTO software_profiles (
+            id, name, description, os_family, variant_ids, status,
+            review_status, risk_level, created_at, updated_at
+        )
+        VALUES (?, ?, ?, ?, ?, 'available', 'approved', ?, ?, ?)
+        """,
+        (
+            profile_id,
+            name,
+            description,
+            os_family,
+            json.dumps(variant_ids, ensure_ascii=False),
+            risk_level,
+            now,
+            now,
+        ),
+    )
+    conn.commit()
+    conn.close()
+    profile = next((item for item in list_software_profiles() if item["id"] == profile_id), None)
+    if profile is None:
+        raise ValueError("software_profile_create_failed")
+    return profile
+
+
+def safe_json_object(value: object, default: dict | None = None) -> dict:
+    if default is None:
+        default = {}
+    if isinstance(value, dict):
+        return value
+    if isinstance(value, str) and value.strip():
+        try:
+            parsed = json.loads(value)
+        except json.JSONDecodeError:
+            return dict(default)
+        return parsed if isinstance(parsed, dict) else dict(default)
+    return dict(default)
+
+
+def safe_json_list(value: object, default: list | None = None) -> list:
+    if default is None:
+        default = []
+    if isinstance(value, list):
+        return value
+    if isinstance(value, str) and value.strip():
+        try:
+            parsed = json.loads(value)
+        except json.JSONDecodeError:
+            return list(default)
+        return parsed if isinstance(parsed, list) else list(default)
+    return list(default)
+
+
+def install_preset_payload(row: sqlite3.Row | dict) -> dict:
+    data = dict(row)
+    return {
+        "id": data["id"],
+        "name": data["name"],
+        "description": data["description"],
+        "os_family": data["os_family"],
+        "boot_target": data["boot_target"],
+        "software_package_ids": safe_json_list(data.get("software_package_ids")),
+        "software_profile_ids": safe_json_list(data.get("software_profile_ids")),
+        "settings": safe_json_object(data.get("settings_json")),
+        "status": data["status"],
+        "review_status": data["review_status"],
+        "created_at": data["created_at"],
+        "updated_at": data["updated_at"],
+        "notes": data["notes"],
+        "assignable": data["status"] == "available" and data["review_status"] == "approved",
+    }
+
+
+def list_install_presets(os_family: str | None = None) -> list[dict]:
+    conn = connect_db()
+    if os_family:
+        rows = conn.execute(
+            "SELECT * FROM install_presets WHERE os_family = ? ORDER BY name COLLATE NOCASE",
+            (os_family,),
+        ).fetchall()
+    else:
+        rows = conn.execute("SELECT * FROM install_presets ORDER BY os_family, name COLLATE NOCASE").fetchall()
+    conn.close()
+    return [install_preset_payload(row) for row in rows]
+
+
+def get_install_preset(preset_id: str) -> dict | None:
+    conn = connect_db()
+    row = conn.execute("SELECT * FROM install_presets WHERE id = ?", (preset_id,)).fetchone()
+    conn.close()
+    return install_preset_payload(row) if row else None
+
+
+def create_install_preset(payload: dict) -> dict:
+    preset_id = validate_software_id(str(payload.get("id", "")), "install_preset_id")
+    name = bounded_text(payload.get("name"), 120)
+    description = bounded_text(payload.get("description"), 500)
+    os_family = bounded_text(payload.get("os_family"), 40)
+    boot_target = bounded_text(payload.get("boot_target"), 120)
+    software_package_ids = [validate_software_id(str(item), "software_package_id") for item in safe_json_list(payload.get("software_package_ids"))]
+    software_profile_ids = [validate_software_id(str(item), "software_profile_id") for item in safe_json_list(payload.get("software_profile_ids"))]
+    settings = safe_json_object(payload.get("settings"))
+    notes = bounded_text(payload.get("notes"), 1000)
+    if os_family not in {"windows", "ubuntu"}:
+        raise ValueError("invalid_os_family")
+    if not name:
+        raise ValueError("install_preset_name_required")
+    if boot_target not in {target["target"] for target in boot_target_catalog()}:
+        raise ValueError("invalid_or_unready_target")
+    if os_family_for_boot_target(boot_target) not in {os_family, "linux"}:
+        raise ValueError("install_preset_target_os_mismatch")
+    targets = {target["target"]: target for target in boot_target_catalog()}
+    if (software_package_ids or software_profile_ids) and not software_assignment_supported_for_target(targets[boot_target]):
+        raise ValueError("install_preset_target_postinstall_not_ready")
+    resolved = resolve_software_plan([], boot_target, software_profile_ids, software_package_ids)
+    if resolved.get("errors"):
+        raise ValueError("install_preset_software_invalid:" + ",".join(resolved["errors"]))
+    now = int(time.time())
+    conn = connect_db()
+    exists = conn.execute("SELECT id FROM install_presets WHERE id = ?", (preset_id,)).fetchone()
+    if exists:
+        conn.close()
+        raise ValueError("install_preset_already_exists")
+    preset_values = {
+        "id": preset_id,
+        "name": name,
+        "description": description,
+        "os_family": os_family,
+        "boot_target": boot_target,
+        "software_package_ids": json.dumps(software_package_ids, ensure_ascii=False),
+        "software_profile_ids": json.dumps(software_profile_ids, ensure_ascii=False),
+        "settings_json": json.dumps(settings, ensure_ascii=False),
+        "created_at": now,
+        "updated_at": now,
+        "notes": notes,
+    }
+    columns = {row["name"] for row in conn.execute("PRAGMA table_info(install_presets)")}
+    if "partition_template_id" in columns:
+        conn.execute(
+            """
+            INSERT INTO install_presets (
+                id, name, description, os_family, boot_target, partition_template_id,
+                software_package_ids, software_profile_ids, settings_json, status, review_status,
+                created_at, updated_at, notes
+            )
+            VALUES (
+                :id, :name, :description, :os_family, :boot_target, '',
+                :software_package_ids, :software_profile_ids, :settings_json,
+                'available', 'approved', :created_at, :updated_at, :notes
+            )
+            """,
+            preset_values,
+        )
+    else:
+        conn.execute(
+            """
+            INSERT INTO install_presets (
+                id, name, description, os_family, boot_target,
+                software_package_ids, software_profile_ids, settings_json, status, review_status,
+                created_at, updated_at, notes
+            )
+            VALUES (
+                :id, :name, :description, :os_family, :boot_target,
+                :software_package_ids, :software_profile_ids, :settings_json,
+                'available', 'approved', :created_at, :updated_at, :notes
+            )
+            """,
+            preset_values,
+        )
+    conn.commit()
+    conn.close()
+    preset = get_install_preset(preset_id)
+    if preset is None:
+        raise ValueError("install_preset_create_failed")
+    return preset
+
+
+def update_install_preset_status(preset_id: str, status: str) -> dict | None:
+    preset_id = validate_software_id(preset_id, "install_preset_id")
+    if status not in INSTALL_PRESET_STATUSES:
+        raise ValueError("invalid_install_preset_status")
+    conn = connect_db()
+    current = conn.execute("SELECT id FROM install_presets WHERE id = ?", (preset_id,)).fetchone()
+    if current is None:
+        conn.close()
+        return None
+    conn.execute(
+        "UPDATE install_presets SET status = ?, updated_at = ? WHERE id = ?",
+        (status, int(time.time()), preset_id),
+    )
+    conn.commit()
+    conn.close()
+    return get_install_preset(preset_id)
+
+
+def update_software_profile_status(profile_id: str, status: str) -> dict | None:
+    profile_id = validate_software_id(profile_id, "software_profile_id")
+    if status not in {"available", "archived"}:
+        raise ValueError("invalid_software_profile_status")
+    conn = connect_db()
+    current = conn.execute("SELECT id FROM software_profiles WHERE id = ?", (profile_id,)).fetchone()
+    if current is None:
+        conn.close()
+        return None
+    conn.execute(
+        "UPDATE software_profiles SET status = ?, updated_at = ? WHERE id = ?",
+        (status, int(time.time()), profile_id),
+    )
+    conn.commit()
+    conn.close()
+    profile = next((item for item in list_software_profiles() if item["id"] == profile_id), None)
+    return profile
+
+
+def software_variant_payload(row: sqlite3.Row | dict) -> dict:
+    data = dict(row)
+    data["package_status"] = data.get("package_status", "available")
+    data["requires_network"] = bool(data.get("requires_network"))
+    data["enabled"] = bool(data.get("enabled"))
+    data["default_for_os"] = bool(data.get("default_for_os"))
+    data["selection_priority"] = int(data.get("selection_priority") or 0)
+    data["install_context"] = data.get("install_context") or ("linux_first_boot" if data.get("os_family") == "ubuntu" else "system_first_boot")
+    data["detection_rules"] = safe_json_list(data.get("detection_rules"))
+    data["requirements"] = safe_json_object(data.get("requirements_json"))
+    data["dependencies"] = safe_json_list(data.get("dependencies_json"))
+    data["return_codes"] = safe_json_object(data.get("return_codes_json"), {"success": [0], "soft_reboot": [3010]})
+    data["restart_behavior"] = data.get("restart_behavior") or "none"
+    data["install_location_policy"] = data.get("install_location_policy") or "system_default"
+    data["assignable"] = is_software_variant_assignable(data)
+    data["blocked_reasons"] = software_variant_blocked_reasons(data)
+    return data
+
+
+def is_https_url(value: str) -> bool:
+    parsed = urlparse(value)
+    return parsed.scheme == "https" and bool(parsed.netloc)
+
+
+def is_deb_download_url(value: str) -> bool:
+    parsed = urlparse(value)
+    return parsed.scheme == "https" and parsed.path.lower().endswith(".deb")
+
+
+def env_bool(name: str, default: bool = False) -> bool:
+    value = os.environ.get(name)
+    if value is None:
+        return default
+    return value.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def windows_kms_activation_plan() -> dict:
+    """返回 Windows/Office 合法 KMS 激活计划。
+
+    SynaBoot 不内置 KMS 服务、不写死公共 KMS，也不保存产品密钥。这里仅允许
+    管理员通过环境变量指定自有企业 KMS 主机；未配置时 runner 会跳过激活。
+    """
+    windows_enabled = env_bool("SYNABOOT_WINDOWS_KMS_ACTIVATE")
+    office_enabled = env_bool("SYNABOOT_OFFICE_KMS_ACTIVATE")
+    host = os.environ.get("SYNABOOT_KMS_HOST", "").strip()
+    port_text = os.environ.get("SYNABOOT_KMS_PORT", "1688").strip() or "1688"
+    try:
+        port = int(port_text)
+    except ValueError:
+        port = 1688
+    enabled = windows_enabled or office_enabled
+    if enabled:
+        if not SAFE_KMS_HOST_RE.match(host):
+            raise ValueError("invalid_kms_host")
+        if port < 1 or port > 65535:
+            raise ValueError("invalid_kms_port")
+    return {
+        "mode": "customer_managed_kms",
+        "enabled": enabled,
+        "windows": windows_enabled,
+        "office": office_enabled,
+        "host": host if enabled else "",
+        "port": port,
+        "public_kms_embedded": False,
+        "product_key_embedded": False,
+    }
+
+
+def is_blocked_software_download_host(value: str) -> bool:
+    parsed = urlparse(value)
+    host = (parsed.hostname or "").lower()
+    path = parsed.path or ""
+    if not host:
+        return True
+    # 软件市场不能把 SynaBoot 自己的静态目录伪装成第三方软件下载源。
+    if path.startswith(("/images", "/boot")):
+        return True
+    if host in {"localhost", "localhost.localdomain"}:
+        return True
+    if host == SERVER_IP.lower():
+        return True
+    try:
+        address = ipaddress.ip_address(host)
+    except ValueError:
+        return False
+    if address.is_loopback or address.is_private or address.is_link_local or address.is_reserved:
+        return True
+    return False
+
+
+def runner_actions_for_variant(variant: dict) -> set[str]:
+    os_family = str(variant.get("os_family", ""))
+    if os_family == "ubuntu":
+        return UBUNTU_RUNNER_ACTIONS
+    if os_family == "windows":
+        return WINDOWS_RUNNER_ACTIONS
+    return set()
+
+
+def default_installer_type_for_action(install_action: str) -> str:
+    return {
+        "apt_package": "apt",
+        "download_deb": "deb",
+        "msi_install": "msi",
+        "exe_install": "exe",
+        "office_odt_install": "office_odt",
+        "official_download": "installer",
+    }.get(install_action, "installer")
+
+
+def install_command_template_for_action(install_action: str) -> str:
+    return {
+        "apt_package": "apt_install_package",
+        "download_deb": "apt_install_downloaded_deb",
+        "msi_install": "msi_install",
+        "exe_install": "exe_silent_install",
+        "office_odt_install": "office_odt_configure",
+        "official_download": "",
+    }.get(install_action, "")
+
+
+def is_supported_ubuntu_apt_source(variant: dict) -> bool:
+    if variant.get("install_action") != "apt_package":
+        return True
+    if variant.get("source_policy") != "official_package_repo":
+        return False
+    host = (urlparse(str(variant.get("official_source_url", ""))).hostname or "").lower()
+    return host in UBUNTU_DEFAULT_APT_SOURCE_HOSTS
+
+
+def source_policy_requires_official_source_url(source_policy: str) -> bool:
+    return source_policy != "admin_reviewed_download"
+
+
+def is_direct_installer_action(install_action: str) -> bool:
+    return install_action in {"download_deb", "msi_install", "exe_install", "office_odt_install"}
+
+
+def software_variant_blocked_reasons(variant: dict) -> list[str]:
+    reasons: list[str] = []
+    install_action = str(variant.get("install_action", ""))
+    download_url = str(variant.get("download_url", ""))
+    source_policy = str(variant.get("source_policy", ""))
+    official_source_url = str(variant.get("official_source_url", ""))
+    if variant.get("package_status") == "archived":
+        reasons.append("package_archived")
+    if not variant.get("enabled"):
+        reasons.append("disabled")
+    if variant.get("review_status") not in ASSIGNABLE_SOFTWARE_REVIEW_STATUSES:
+        reasons.append("review_required")
+    if source_policy not in ALLOWED_SOFTWARE_SOURCE_POLICIES:
+        reasons.append("source_policy_not_allowed")
+    if variant.get("signature_policy") not in ASSIGNABLE_SIGNATURE_POLICIES:
+        reasons.append("signature_policy_not_allowed")
+    if source_policy == "admin_reviewed_download" and not is_direct_installer_action(install_action):
+        reasons.append("source_policy_not_supported_for_action")
+    if source_policy_requires_official_source_url(source_policy) and not is_https_url(official_source_url):
+        reasons.append("official_source_url_must_be_https")
+    if official_source_url and not is_https_url(official_source_url):
+        reasons.append("official_source_url_must_be_https")
+    if install_action != "apt_package" and not is_https_url(download_url):
+        reasons.append("download_url_must_be_https")
+    if official_source_url and is_blocked_software_download_host(official_source_url):
+        reasons.append("official_source_must_not_be_hosted_by_synaboot")
+    if variant.get("signature_policy") == "sha256_required" and not variant.get("sha256"):
+        reasons.append("sha256_required")
+    if download_url and is_blocked_software_download_host(download_url):
+        reasons.append("third_party_binary_must_not_be_hosted_by_synaboot")
+    if install_action not in {"official_download", "download_deb", "apt_package", "msi_install", "exe_install", "office_odt_install"}:
+        reasons.append("install_action_not_allowlisted")
+    elif install_action not in runner_actions_for_variant(variant):
+        reasons.append("runner_action_not_ready")
+    if variant.get("os_family") == "ubuntu" and variant.get("install_phase") != "linux_first_boot":
+        reasons.append("install_phase_not_supported")
+    if variant.get("os_family") == "windows" and variant.get("install_phase") != "windows_first_boot":
+        reasons.append("install_phase_not_supported")
+    if install_action == "download_deb" and variant.get("installer_type") != "deb":
+        reasons.append("installer_type_not_supported")
+    if install_action == "msi_install" and variant.get("installer_type") != "msi":
+        reasons.append("installer_type_not_supported")
+    if install_action == "exe_install" and variant.get("installer_type") != "exe":
+        reasons.append("installer_type_not_supported")
+    if install_action == "office_odt_install" and variant.get("installer_type") != "office_odt":
+        reasons.append("installer_type_not_supported")
+    if install_action == "apt_package" and not SAFE_APT_PACKAGE_RE.match(str(variant.get("package_name", ""))):
+        reasons.append("package_name_invalid")
+    if install_action == "office_odt_install" and not SAFE_OFFICE_PRODUCT_ID_RE.match(str(variant.get("package_name", ""))):
+        reasons.append("office_product_id_invalid")
+    if install_action == "apt_package" and not is_supported_ubuntu_apt_source(variant):
+        reasons.append("apt_repo_not_supported")
+    if variant.get("install_context") and variant.get("install_context") not in SOFTWARE_INSTALL_CONTEXTS:
+        reasons.append("install_context_not_supported")
+    if variant.get("restart_behavior") and variant.get("restart_behavior") not in SOFTWARE_RESTART_BEHAVIORS:
+        reasons.append("restart_behavior_not_supported")
+    if variant.get("install_location_policy") and variant.get("install_location_policy") not in SOFTWARE_INSTALL_LOCATION_POLICIES:
+        reasons.append("install_location_policy_not_supported")
+    return reasons
+
+
+def is_software_variant_assignable(variant: dict) -> bool:
+    return not software_variant_blocked_reasons(variant)
+
+
+def software_package_payload(package: sqlite3.Row, variants: list[dict]) -> dict:
+    return {
+        "id": package["id"],
+        "name": package["name"],
+        "vendor": package["vendor"],
+        "category": package["category"],
+        "description": package["description"],
+        "homepage_url": package["homepage_url"],
+        "icon_key": package["icon_key"],
+        "status": package["status"],
+        "review_status": package["review_status"],
+        "created_at": package["created_at"],
+        "updated_at": package["updated_at"],
+        "variants": variants,
+    }
+
+
+def list_software_packages(os_family: str | None = None, include_blocked: bool = True) -> list[dict]:
+    conn = connect_db()
+    packages = conn.execute("SELECT * FROM software_packages ORDER BY name COLLATE NOCASE").fetchall()
+    result: list[dict] = []
+    for package in packages:
+        if not include_blocked and package["status"] != "available":
+            continue
+        params: list[object] = [package["id"]]
+        where = "package_id = ?"
+        if os_family:
+            where += " AND os_family = ?"
+            params.append(os_family)
+        rows = conn.execute(
+            f"""
+            SELECT * FROM software_variants
+            WHERE {where}
+            ORDER BY os_family, default_for_os DESC, selection_priority DESC, updated_at DESC, id
+            """,
+            params,
+        ).fetchall()
+        variants = []
+        for row in rows:
+            variant = dict(row)
+            variant["package_status"] = package["status"]
+            variants.append(software_variant_payload(variant))
+        if not include_blocked:
+            variants = [variant for variant in variants if variant["assignable"]]
+        if variants or not os_family:
+            result.append(software_package_payload(package, variants))
+    conn.close()
+    return result
+
+
+def get_software_package(package_id: str) -> dict | None:
+    conn = connect_db()
+    package = conn.execute("SELECT * FROM software_packages WHERE id = ?", (package_id,)).fetchone()
+    if package is None:
+        conn.close()
+        return None
+    variants = []
+    for row in conn.execute(
+            """
+            SELECT * FROM software_variants
+            WHERE package_id = ?
+            ORDER BY os_family, default_for_os DESC, selection_priority DESC, updated_at DESC, id
+            """,
+            (package_id,),
+        ):
+        variant = dict(row)
+        variant["package_status"] = package["status"]
+        variants.append(software_variant_payload(variant))
+    conn.close()
+    return software_package_payload(package, variants)
+
+
+def bounded_text(value: object, max_length: int) -> str:
+    return str(value or "").strip()[:max_length]
+
+
+def validate_software_id(value: str, field_name: str) -> str:
+    normalized = value.strip().lower()
+    if not SAFE_SOFTWARE_ID_RE.match(normalized):
+        raise ValueError(f"invalid_{field_name}")
+    return normalized
+
+
+def create_software_package(payload: dict) -> dict:
+    package_id = validate_software_id(str(payload.get("id", "")), "software_package_id")
+    name = bounded_text(payload.get("name"), 120)
+    vendor = bounded_text(payload.get("vendor"), 120)
+    category = bounded_text(payload.get("category"), 80)
+    description = bounded_text(payload.get("description"), 500)
+    homepage_url = bounded_text(payload.get("homepage_url"), 500)
+    icon_key = validate_software_id(str(payload.get("icon_key") or package_id), "icon_key")
+    if not name:
+        raise ValueError("software_package_name_required")
+    if not vendor:
+        raise ValueError("software_package_vendor_required")
+    if not category:
+        raise ValueError("software_package_category_required")
+    if not is_https_url(homepage_url):
+        raise ValueError("homepage_url_must_be_https")
+    if is_blocked_software_download_host(homepage_url):
+        raise ValueError("homepage_url_must_not_be_hosted_by_synaboot")
+
+    now = int(time.time())
+    conn = connect_db()
+    exists = conn.execute("SELECT id FROM software_packages WHERE id = ?", (package_id,)).fetchone()
+    if exists is not None:
+        conn.close()
+        raise ValueError("software_package_already_exists")
+    conn.execute(
+        """
+        INSERT INTO software_packages (
+            id, name, vendor, category, description, homepage_url,
+            icon_key, status, review_status, created_at, updated_at
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, 'available', 'needs_review', ?, ?)
+        """,
+        (package_id, name, vendor, category, description, homepage_url, icon_key, now, now),
+    )
+    conn.commit()
+    conn.close()
+    package = get_software_package(package_id)
+    if package is None:
+        raise ValueError("software_package_create_failed")
+    return package
+
+
+def update_software_package_status(package_id: str, status: str) -> dict | None:
+    package_id = validate_software_id(package_id, "software_package_id")
+    if status not in {"available", "archived"}:
+        raise ValueError("invalid_software_package_status")
+    conn = connect_db()
+    current = conn.execute("SELECT id FROM software_packages WHERE id = ?", (package_id,)).fetchone()
+    if current is None:
+        conn.close()
+        return None
+    conn.execute(
+        "UPDATE software_packages SET status = ?, updated_at = ? WHERE id = ?",
+        (status, int(time.time()), package_id),
+    )
+    conn.commit()
+    conn.close()
+    return get_software_package(package_id)
+
+
+def list_software_variants(os_family: str | None = None, include_blocked: bool = True) -> list[dict]:
+    conn = connect_db()
+    if os_family:
+        rows = conn.execute(
+            """
+            SELECT v.*, p.status AS package_status
+            FROM software_variants v
+            JOIN software_packages p ON p.id = v.package_id
+            WHERE v.os_family = ?
+            ORDER BY v.package_id, v.default_for_os DESC, v.selection_priority DESC, v.updated_at DESC, v.id
+            """,
+            (os_family,),
+        ).fetchall()
+    else:
+        rows = conn.execute(
+            """
+            SELECT v.*, p.status AS package_status
+            FROM software_variants v
+            JOIN software_packages p ON p.id = v.package_id
+            ORDER BY v.package_id, v.os_family, v.default_for_os DESC, v.selection_priority DESC, v.updated_at DESC, v.id
+            """
+        ).fetchall()
+    conn.close()
+    variants = [software_variant_payload(row) for row in rows]
+    return variants if include_blocked else [variant for variant in variants if variant["assignable"]]
+
+
+def get_software_variant(variant_id: str) -> dict | None:
+    conn = connect_db()
+    row = conn.execute(
+        """
+        SELECT v.*, p.status AS package_status
+        FROM software_variants v
+        JOIN software_packages p ON p.id = v.package_id
+        WHERE v.id = ?
+        """,
+        (variant_id,),
+    ).fetchone()
+    conn.close()
+    return software_variant_payload(row) if row else None
+
+
+def create_software_variant(package_id: str, payload: dict) -> dict:
+    package_id = validate_software_id(package_id, "software_package_id")
+    variant_id = validate_software_id(str(payload.get("id", "")), "software_variant_id")
+    os_family = bounded_text(payload.get("os_family"), 40)
+    if os_family not in {"windows", "ubuntu"}:
+        raise ValueError("invalid_os_family")
+    install_action = bounded_text(payload.get("install_action"), 60) or "official_download"
+    if install_action not in {"official_download", "download_deb", "apt_package", "msi_install", "exe_install", "office_odt_install"}:
+        raise ValueError("invalid_install_action")
+    installer_type = bounded_text(payload.get("installer_type"), 40)
+    if not installer_type:
+        installer_type = default_installer_type_for_action(install_action)
+    if not SAFE_SOFTWARE_INSTALLER_TYPE_RE.match(installer_type):
+        raise ValueError("invalid_installer_type")
+    install_phase = "linux_first_boot" if os_family == "ubuntu" else "windows_first_boot"
+    official_source_url = bounded_text(payload.get("official_source_url"), 500)
+    download_url = bounded_text(payload.get("download_url"), 500)
+    source_policy = bounded_text(payload.get("source_policy"), 80) or "official_vendor"
+    signature_policy = bounded_text(payload.get("signature_policy"), 80) or "vendor_signed"
+    risk_level = bounded_text(payload.get("risk_level"), 40) or "medium"
+    package_name = bounded_text(payload.get("package_name"), 160)
+    silent_args = bounded_text(payload.get("silent_args"), 200)
+    install_context = bounded_text(payload.get("install_context"), 80) or ("linux_first_boot" if os_family == "ubuntu" else "system_first_boot")
+    detection_rules = safe_json_list(payload.get("detection_rules"))
+    requirements = safe_json_object(payload.get("requirements"))
+    dependencies = safe_json_list(payload.get("dependencies"))
+    return_codes = safe_json_object(payload.get("return_codes"), {"success": [0], "soft_reboot": [3010]})
+    restart_behavior = bounded_text(payload.get("restart_behavior"), 80) or "none"
+    install_location_policy = bounded_text(payload.get("install_location_policy"), 80) or "system_default"
+    default_for_os = bool(payload.get("default_for_os", False))
+    try:
+        selection_priority = int(payload.get("selection_priority", 0) or 0)
+    except (TypeError, ValueError):
+        raise ValueError("invalid_selection_priority")
+    if selection_priority < 0 or selection_priority > 1000:
+        raise ValueError("invalid_selection_priority")
+    sha256 = bounded_text(payload.get("sha256"), 80).lower()
+    if source_policy not in ALLOWED_SOFTWARE_SOURCE_POLICIES:
+        raise ValueError("invalid_source_policy")
+    if signature_policy not in ASSIGNABLE_SIGNATURE_POLICIES:
+        raise ValueError("invalid_signature_policy")
+    if risk_level not in SOFTWARE_RISK_LEVELS:
+        raise ValueError("invalid_risk_level")
+    if install_context not in SOFTWARE_INSTALL_CONTEXTS:
+        raise ValueError("invalid_install_context")
+    if restart_behavior not in SOFTWARE_RESTART_BEHAVIORS:
+        raise ValueError("invalid_restart_behavior")
+    if install_location_policy not in SOFTWARE_INSTALL_LOCATION_POLICIES:
+        raise ValueError("invalid_install_location_policy")
+    if source_policy == "admin_reviewed_download" and not is_direct_installer_action(install_action):
+        raise ValueError("source_policy_not_supported_for_action")
+    if source_policy_requires_official_source_url(source_policy) and not is_https_url(official_source_url):
+        raise ValueError("official_source_url_must_be_https")
+    if official_source_url and not is_https_url(official_source_url):
+        raise ValueError("official_source_url_must_be_https")
+    if official_source_url and is_blocked_software_download_host(official_source_url):
+        raise ValueError("official_source_url_must_not_be_hosted_by_synaboot")
+    if install_action != "apt_package" and not is_https_url(download_url):
+        raise ValueError("download_url_must_be_https")
+    if download_url and is_blocked_software_download_host(download_url):
+        raise ValueError("third_party_binary_must_not_be_hosted_by_synaboot")
+    if sha256 and not re.fullmatch(r"[a-f0-9]{64}", sha256):
+        raise ValueError("invalid_sha256")
+    if install_action == "office_odt_install":
+        if package_name and not SAFE_OFFICE_PRODUCT_ID_RE.match(package_name):
+            raise ValueError("invalid_office_product_id")
+    elif package_name and not SAFE_APT_PACKAGE_RE.match(package_name):
+        raise ValueError("invalid_package_name")
+    if install_action == "apt_package" and not package_name:
+        raise ValueError("package_name_required_for_apt_package")
+    if install_action == "exe_install" and not silent_args:
+        raise ValueError("silent_args_required_for_exe_install")
+    if install_action == "office_odt_install" and not package_name:
+        raise ValueError("office_product_id_required")
+    if not SAFE_SILENT_ARGS_RE.match(silent_args):
+        raise ValueError("invalid_silent_args")
+
+    now = int(time.time())
+    install_command_template = install_command_template_for_action(install_action)
+    conn = connect_db()
+    package = conn.execute("SELECT id FROM software_packages WHERE id = ?", (package_id,)).fetchone()
+    if package is None:
+        conn.close()
+        raise ValueError("software_package_not_found")
+    exists = conn.execute("SELECT id FROM software_variants WHERE id = ?", (variant_id,)).fetchone()
+    if exists is not None:
+        conn.close()
+        raise ValueError("software_variant_already_exists")
+    if default_for_os:
+        conn.execute(
+            "UPDATE software_variants SET default_for_os = 0, updated_at = ? WHERE package_id = ? AND os_family = ?",
+            (now, package_id, os_family),
+        )
+    conn.execute(
+        """
+        INSERT INTO software_variants (
+            id, package_id, os_family, os_version_constraint, arch, version,
+            installer_type, official_source_url, download_url, source_policy,
+            sha256, signature_policy, install_phase, install_action,
+            package_name, default_for_os, selection_priority,
+            install_context, detection_rules, requirements_json, dependencies_json,
+            return_codes_json, restart_behavior, install_location_policy,
+            install_command_template, silent_args, requires_network, risk_level,
+            review_status, enabled, notes, created_at, updated_at
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, 'needs_review', 1, ?, ?, ?)
+        """,
+        (
+            variant_id,
+            package_id,
+            os_family,
+            bounded_text(payload.get("os_version_constraint"), 80) or (">=22.04" if os_family == "ubuntu" else "windows_10_or_11"),
+            bounded_text(payload.get("arch"), 40) or "x86_64",
+            bounded_text(payload.get("version"), 80) or "latest",
+            installer_type,
+            official_source_url,
+            download_url,
+            source_policy,
+            sha256,
+            signature_policy,
+            install_phase,
+            install_action,
+            package_name,
+            int(default_for_os),
+            selection_priority,
+            install_context,
+            json.dumps(detection_rules, ensure_ascii=False),
+            json.dumps(requirements, ensure_ascii=False),
+            json.dumps(dependencies, ensure_ascii=False),
+            json.dumps(return_codes, ensure_ascii=False),
+            restart_behavior,
+            install_location_policy,
+            install_command_template,
+            silent_args,
+            risk_level,
+            bounded_text(payload.get("notes"), 1000),
+            now,
+            now,
+        ),
+    )
+    conn.commit()
+    conn.close()
+    variant = get_software_variant(variant_id)
+    if variant is None:
+        raise ValueError("software_variant_create_failed")
+    return variant
+
+
+def update_software_variant(variant_id: str, payload: dict) -> dict | None:
+    allowed_fields = {
+        "review_status",
+        "enabled",
+        "signature_policy",
+        "sha256",
+        "official_source_url",
+        "download_url",
+        "source_policy",
+        "install_action",
+        "installer_type",
+        "package_name",
+        "silent_args",
+        "default_for_os",
+        "selection_priority",
+        "install_context",
+        "detection_rules",
+        "requirements",
+        "dependencies",
+        "return_codes",
+        "restart_behavior",
+        "install_location_policy",
+        "risk_level",
+        "notes",
+    }
+    updates = {key: payload[key] for key in allowed_fields if key in payload}
+    if not updates:
+        raise ValueError("no_supported_software_variant_fields")
+
+    if "review_status" in updates and updates["review_status"] not in SOFTWARE_REVIEW_STATUSES:
+        raise ValueError("invalid_review_status")
+    if "signature_policy" in updates and updates["signature_policy"] not in ASSIGNABLE_SIGNATURE_POLICIES:
+        raise ValueError("invalid_signature_policy")
+    if "source_policy" in updates and updates["source_policy"] not in ALLOWED_SOFTWARE_SOURCE_POLICIES:
+        raise ValueError("invalid_source_policy")
+    if "risk_level" in updates and updates["risk_level"] not in SOFTWARE_RISK_LEVELS:
+        raise ValueError("invalid_risk_level")
+    if "install_action" in updates:
+        install_action = bounded_text(updates["install_action"], 60)
+        if install_action not in {"official_download", "download_deb", "apt_package", "msi_install", "exe_install", "office_odt_install"}:
+            raise ValueError("invalid_install_action")
+        updates["install_action"] = install_action
+        updates["install_command_template"] = install_command_template_for_action(install_action)
+    if "installer_type" in updates:
+        installer_type = bounded_text(updates["installer_type"], 40)
+        if not SAFE_SOFTWARE_INSTALLER_TYPE_RE.match(installer_type):
+            raise ValueError("invalid_installer_type")
+        updates["installer_type"] = installer_type
+    if "silent_args" in updates:
+        silent_args = bounded_text(updates["silent_args"], 200)
+        if not SAFE_SILENT_ARGS_RE.match(silent_args):
+            raise ValueError("invalid_silent_args")
+        updates["silent_args"] = silent_args
+    if "enabled" in updates:
+        updates["enabled"] = 1 if bool(updates["enabled"]) else 0
+    if "default_for_os" in updates:
+        updates["default_for_os"] = 1 if bool(updates["default_for_os"]) else 0
+    if "selection_priority" in updates:
+        try:
+            selection_priority = int(updates["selection_priority"] or 0)
+        except (TypeError, ValueError):
+            raise ValueError("invalid_selection_priority")
+        if selection_priority < 0 or selection_priority > 1000:
+            raise ValueError("invalid_selection_priority")
+        updates["selection_priority"] = selection_priority
+    if "install_context" in updates:
+        install_context = bounded_text(updates["install_context"], 80)
+        if install_context not in SOFTWARE_INSTALL_CONTEXTS:
+            raise ValueError("invalid_install_context")
+        updates["install_context"] = install_context
+    if "restart_behavior" in updates:
+        restart_behavior = bounded_text(updates["restart_behavior"], 80)
+        if restart_behavior not in SOFTWARE_RESTART_BEHAVIORS:
+            raise ValueError("invalid_restart_behavior")
+        updates["restart_behavior"] = restart_behavior
+    if "install_location_policy" in updates:
+        install_location_policy = bounded_text(updates["install_location_policy"], 80)
+        if install_location_policy not in SOFTWARE_INSTALL_LOCATION_POLICIES:
+            raise ValueError("invalid_install_location_policy")
+        updates["install_location_policy"] = install_location_policy
+    for input_key, storage_key, parser in [
+        ("detection_rules", "detection_rules", safe_json_list),
+        ("requirements", "requirements_json", safe_json_object),
+        ("dependencies", "dependencies_json", safe_json_list),
+        ("return_codes", "return_codes_json", safe_json_object),
+    ]:
+        if input_key in updates:
+            updates[storage_key] = json.dumps(parser(updates[input_key]), ensure_ascii=False)
+            del updates[input_key]
+    if "sha256" in updates:
+        sha256 = str(updates["sha256"]).strip().lower()
+        if sha256 and not re.fullmatch(r"[a-f0-9]{64}", sha256):
+            raise ValueError("invalid_sha256")
+        updates["sha256"] = sha256
+    if "package_name" in updates:
+        package_name = str(updates["package_name"]).strip()
+        updates["package_name"] = package_name
+    if "notes" in updates:
+        updates["notes"] = str(updates["notes"])[:1000]
+
+    conn = connect_db()
+    current = conn.execute("SELECT * FROM software_variants WHERE id = ?", (variant_id,)).fetchone()
+    if current is None:
+        conn.close()
+        return None
+    effective_install_action = str(updates.get("install_action", current["install_action"]))
+    if "install_action" in updates and "installer_type" not in updates:
+        updates["installer_type"] = default_installer_type_for_action(effective_install_action)
+    effective_installer_type = str(updates.get("installer_type", current["installer_type"]))
+    effective_package_name = str(updates.get("package_name", current["package_name"] or "")).strip()
+    effective_download_url = str(updates.get("download_url", current["download_url"] or "")).strip()
+    effective_source_policy = str(updates.get("source_policy", current["source_policy"] or ""))
+    if effective_source_policy == "admin_reviewed_download" and not is_direct_installer_action(effective_install_action):
+        conn.close()
+        raise ValueError("source_policy_not_supported_for_action")
+    if "official_source_url" in updates:
+        official_source_url = str(updates["official_source_url"])
+        if source_policy_requires_official_source_url(effective_source_policy) and not is_https_url(official_source_url):
+            conn.close()
+            raise ValueError("official_source_url_must_be_https")
+        if official_source_url and not is_https_url(official_source_url):
+            conn.close()
+            raise ValueError("official_source_url_must_be_https")
+        if official_source_url and is_blocked_software_download_host(official_source_url):
+            conn.close()
+            raise ValueError("official_source_url_must_not_be_hosted_by_synaboot")
+    elif source_policy_requires_official_source_url(effective_source_policy) and not is_https_url(str(current["official_source_url"] or "")):
+        conn.close()
+        raise ValueError("official_source_url_must_be_https")
+    if "download_url" in updates:
+        download_url = str(updates["download_url"]).strip()
+        updates["download_url"] = download_url
+        if effective_install_action != "apt_package" and not is_https_url(download_url):
+            conn.close()
+            raise ValueError("download_url_must_be_https")
+        if download_url and is_blocked_software_download_host(download_url):
+            conn.close()
+            raise ValueError("third_party_binary_must_not_be_hosted_by_synaboot")
+    if effective_install_action == "apt_package" and not effective_package_name:
+        conn.close()
+        raise ValueError("package_name_required_for_apt_package")
+    if effective_install_action == "apt_package" and not SAFE_APT_PACKAGE_RE.match(effective_package_name):
+        conn.close()
+        raise ValueError("invalid_package_name")
+    if effective_install_action == "office_odt_install" and not effective_package_name:
+        conn.close()
+        raise ValueError("office_product_id_required")
+    if effective_install_action == "exe_install" and not str(updates.get("silent_args", current["silent_args"] or "")).strip():
+        conn.close()
+        raise ValueError("silent_args_required_for_exe_install")
+    if effective_install_action == "office_odt_install" and not SAFE_OFFICE_PRODUCT_ID_RE.match(effective_package_name):
+        conn.close()
+        raise ValueError("invalid_office_product_id")
+    if effective_install_action == "download_deb" and effective_installer_type != "deb":
+        conn.close()
+        raise ValueError("installer_type_must_be_deb")
+    if effective_install_action == "msi_install" and effective_installer_type != "msi":
+        conn.close()
+        raise ValueError("installer_type_must_be_msi")
+    if effective_install_action == "exe_install" and effective_installer_type != "exe":
+        conn.close()
+        raise ValueError("installer_type_must_be_exe")
+    if effective_install_action == "office_odt_install" and effective_installer_type != "office_odt":
+        conn.close()
+        raise ValueError("installer_type_must_be_office_odt")
+    if effective_install_action != "apt_package" and not is_https_url(effective_download_url):
+        conn.close()
+        raise ValueError("download_url_must_be_https")
+    if updates.get("default_for_os") == 1:
+        now = int(time.time())
+        conn.execute(
+            """
+            UPDATE software_variants
+            SET default_for_os = 0, updated_at = ?
+            WHERE package_id = ? AND os_family = ? AND id <> ?
+            """,
+            (now, current["package_id"], current["os_family"], variant_id),
+        )
+    updates["updated_at"] = int(time.time())
+    set_clause = ", ".join(f"{key} = ?" for key in updates)
+    conn.execute(
+        f"UPDATE software_variants SET {set_clause} WHERE id = ?",
+        [*updates.values(), variant_id],
+    )
+    conn.commit()
+    conn.close()
+    return get_software_variant(variant_id)
+
+
+def os_family_for_boot_target(target: str) -> str:
+    value = target.lower()
+    if "windows" in value:
+        return "windows"
+    if "ubuntu" in value:
+        return "ubuntu"
+    if "linux" in value:
+        return "linux"
+    return ""
+
+
+def software_assignment_supported_for_target(target: dict) -> bool:
+    # 只有已经具备真实 OS 安装后执行通道的目标，才能附带软件安装计划。
+    # Windows 通过 HotPE/WinPE 显式注入 SetupComplete.cmd 后，在首次启动执行 runner。
+    return bool(target.get("software_assignment_enabled"))
+
+
+def compatible_software_packages_for_target(target: dict) -> list[dict]:
+    if not software_assignment_supported_for_target(target):
+        return []
+    os_family = os_family_for_boot_target(str(target.get("target", "")))
+    if not os_family:
+        return []
+    return list_software_packages(os_family=os_family, include_blocked=False)
+
+
+def compatible_software_profiles_for_target(target: dict) -> list[dict]:
+    if not software_assignment_supported_for_target(target):
+        return []
+    os_family = os_family_for_boot_target(str(target.get("target", "")))
+    if not os_family:
+        return []
+    return [
+        profile
+        for profile in list_software_profiles()
+        if profile.get("assignable") and software_profile_compatible(profile, os_family)
+    ]
+
+
+def software_profile_compatible(profile: dict, os_family: str) -> bool:
+    return profile["os_family"] == os_family or (os_family == "linux" and profile["os_family"] == "ubuntu")
+
+
+def resolve_software_plan(
+    variant_ids: list[str],
+    boot_target: str,
+    profile_ids: list[str] | None = None,
+    package_ids: list[str] | None = None,
+) -> dict:
+    os_family = os_family_for_boot_target(boot_target)
+    profile_ids = profile_ids or []
+    package_ids = package_ids or []
+    profiles_by_id = {profile["id"]: profile for profile in list_software_profiles()}
+    variants_by_id = {variant["id"]: variant for variant in list_software_variants()}
+    all_packages_by_id = {package["id"]: package for package in list_software_packages(include_blocked=True)}
+    compatible_packages_by_id = {package["id"]: package for package in list_software_packages(os_family=os_family, include_blocked=False)}
+    expanded_variant_ids: list[str] = []
+    resolved: list[dict] = []
+    errors: list[str] = []
+    resolved_profiles: list[dict] = []
+    resolved_packages: list[dict] = []
+
+    for package_id in package_ids:
+        package_id = str(package_id)
+        package = all_packages_by_id.get(package_id)
+        if package is None:
+            errors.append(f"software_package_not_found:{package_id}")
+            continue
+        compatible_package = compatible_packages_by_id.get(package_id)
+        compatible_variants = list((compatible_package or {}).get("variants", []))
+        if not compatible_variants:
+            errors.append(f"software_package_no_assignable_variant:{package_id}:{os_family}")
+            continue
+        variant = compatible_variants[0]
+        resolved_packages.append(
+            {
+                "id": package["id"],
+                "name": package["name"],
+                "vendor": package.get("vendor", ""),
+                "category": package.get("category", ""),
+                "selected_variant_id": variant["id"],
+            }
+        )
+        expanded_variant_ids.append(str(variant["id"]))
+
+    for profile_id in profile_ids:
+        profile = profiles_by_id.get(str(profile_id))
+        if profile is None:
+            errors.append(f"software_profile_not_found:{profile_id}")
+            continue
+        if profile.get("status") != "available" or profile.get("review_status") not in ASSIGNABLE_SOFTWARE_REVIEW_STATUSES:
+            errors.append(f"software_profile_not_approved:{profile_id}")
+            continue
+        if not software_profile_compatible(profile, os_family):
+            errors.append(f"software_profile_incompatible:{profile_id}")
+            continue
+        if not profile.get("assignable"):
+            errors.append(f"software_profile_not_assignable:{profile_id}")
+            continue
+        resolved_profiles.append(
+            {
+                "id": profile["id"],
+                "name": profile["name"],
+                "os_family": profile["os_family"],
+                "variant_ids": profile["variant_ids"],
+            }
+        )
+        expanded_variant_ids.extend(str(item) for item in profile.get("variant_ids", []))
+
+    expanded_variant_ids.extend(str(item) for item in variant_ids)
+    deduped_variant_ids = list(dict.fromkeys(item for item in expanded_variant_ids if item))
+
+    for variant_id in deduped_variant_ids:
+        variant = variants_by_id.get(str(variant_id))
+        if variant is None:
+            errors.append(f"software_variant_not_found:{variant_id}")
+            continue
+        compatible = variant["os_family"] == os_family or (os_family == "linux" and variant["os_family"] == "ubuntu")
+        if not compatible:
+            errors.append(f"software_variant_incompatible:{variant_id}")
+            continue
+        if not variant["assignable"]:
+            errors.append(f"software_variant_not_approved:{variant_id}:{','.join(variant['blocked_reasons'])}")
+            continue
+        resolved.append(
+            {
+                "id": variant["id"],
+                "package_id": variant["package_id"],
+                "os_family": variant["os_family"],
+                "arch": variant["arch"],
+                "version": variant["version"],
+                "installer_type": variant["installer_type"],
+                "official_source_url": variant["official_source_url"],
+                "download_url": variant["download_url"],
+                "source_policy": variant["source_policy"],
+                "sha256": variant["sha256"],
+                "signature_policy": variant["signature_policy"],
+                "install_phase": variant["install_phase"],
+                "install_action": variant["install_action"],
+                "package_name": variant.get("package_name", ""),
+                "silent_args": variant["silent_args"],
+                "install_args": variant["silent_args"],
+                "expected_exit_codes": [0],
+                "timeout_seconds": 1800,
+                "install_context": variant.get("install_context", ""),
+                "detection_rules": variant.get("detection_rules", []),
+                "requirements": variant.get("requirements", {}),
+                "dependencies": variant.get("dependencies", []),
+                "return_codes": variant.get("return_codes", {"success": [0], "soft_reboot": [3010]}),
+                "restart_behavior": variant.get("restart_behavior", "none"),
+                "install_location_policy": variant.get("install_location_policy", "system_default"),
+                "requires_network": variant["requires_network"],
+                "risk_level": variant["risk_level"],
+                "review_status": variant["review_status"],
+            }
+        )
+    if errors:
+        raise ValueError(";".join(errors))
+    return {
+        "schema_version": "synaboot.software-plan.v1",
+        "plan_version": 1,
+        "generated_at": int(time.time()),
+        "artifact_hosting_allowed": False,
+        "third_party_binary_stored": False,
+        "client_downloads_from_official_source": True,
+        "os_family": os_family,
+        "package_ids": [package["id"] for package in resolved_packages],
+        "packages": resolved_packages,
+        "profile_ids": [profile["id"] for profile in resolved_profiles],
+        "profiles": resolved_profiles,
+        "variants": resolved,
+    }
+
+
+def deployment_assignment_payload(row: sqlite3.Row) -> dict:
+    software_package_ids = json.loads(row["software_package_ids"] or "[]")
+    software_profile_ids = json.loads(row["software_profile_ids"] or "[]")
+    software_variant_ids = json.loads(row["software_variant_ids"] or "[]")
+    session_ids = json.loads(row["session_ids"] or "[]")
+    resolved_software_plan = json.loads(row["resolved_software_plan"] or "{}")
+    task_sequence_plan = json.loads(row["task_sequence_plan"] or "{}")
+    return {
+        "id": row["id"],
+        "session_id": row["session_id"],
+        "session_ids": session_ids,
+        "source_image_id": row["source_image_id"],
+        "boot_target": row["boot_target"],
+        "boot_label": row["boot_label"],
+        "software_package_ids": software_package_ids,
+        "software_profile_ids": software_profile_ids,
+        "software_variant_ids": software_variant_ids,
+        "resolved_software_plan": resolved_software_plan,
+        "install_preset_id": row["install_preset_id"],
+        "task_sequence_plan": task_sequence_plan,
+        "status": row["status"],
+        "created_by": row["created_by"],
+        "created_at": row["created_at"],
+        "updated_at": row["updated_at"],
+        "expires_at": row["expires_at"],
+        "boot_token_expires_at": row["boot_token_expires_at"],
+    }
+
+
+def build_task_sequence_plan(
+    boot_target: str,
+    install_preset: dict | None,
+    software_plan: dict,
+) -> dict:
+    os_family = os_family_for_boot_target(boot_target)
+    steps = []
+    if os_family == "windows":
+        steps = [
+            {"id": "boot_winpe", "status": "manual_or_existing", "execution": "boot_entry"},
+            {"id": "collect_hardware", "status": "planned", "execution": "future_winpe_callback"},
+            {"id": "apply_windows", "status": "manual_or_existing", "execution": "windows_setup_or_hotpe_tool"},
+            {"id": "inject_bootstrap", "status": "available", "execution": "windows_hotpe_inject_helper"},
+            {"id": "first_boot", "status": "available", "execution": "setupcomplete_bootstrap"},
+            {"id": "install_software", "status": "available", "execution": "runner_ps1"},
+            {"id": "detect_software", "status": "planned", "execution": "deployment_type_detection_rules"},
+            {"id": "report_result", "status": "available", "execution": "postinstall_events"},
+        ]
+    elif os_family in {"ubuntu", "linux"}:
+        steps = [
+            {"id": "boot_installer", "status": "available", "execution": "ipxe_nocloud"},
+            {"id": "install_software", "status": "available", "execution": "runner_sh"},
+            {"id": "report_result", "status": "available", "execution": "postinstall_events"},
+        ]
+    return {
+        "schema_version": "synaboot.task-sequence-plan.v1",
+        "mode": "preview_and_bootstrap",
+        "os_family": os_family,
+        "boot_target": boot_target,
+        "install_preset_id": install_preset["id"] if install_preset else "",
+        "software_variant_count": len(software_plan.get("variants", [])),
+        "steps": steps,
+    }
+
+
+def client_event_payload(row: sqlite3.Row | dict) -> dict:
+    data = dict(row)
+    data["payload"] = json.loads(data.get("payload") or "{}")
+    return data
+
+
+def list_assignment_events(assignment_id: str, limit: int = 20) -> list[dict]:
+    conn = connect_db()
+    rows = conn.execute(
+        """
+        SELECT * FROM client_events
+        WHERE assignment_id = ?
+        ORDER BY created_at DESC, rowid DESC
+        LIMIT ?
+        """,
+        (assignment_id, limit),
+    ).fetchall()
+    conn.close()
+    return [client_event_payload(row) for row in rows]
+
+
+def list_assignment_session_events(assignment_id: str, session_id: str, limit: int = 20) -> list[dict]:
+    conn = connect_db()
+    rows = conn.execute(
+        """
+        SELECT * FROM client_events
+        WHERE assignment_id = ? AND session_id = ?
+        ORDER BY created_at DESC, rowid DESC
+        LIMIT ?
+        """,
+        (assignment_id, session_id, limit),
+    ).fetchall()
+    conn.close()
+    return [client_event_payload(row) for row in rows]
+
+
+def assignment_event_summary(events: list[dict]) -> dict:
+    summary = {
+        "total": len(events),
+        "last_status": "",
+        "last_stage": "",
+        "last_message": "",
+        "last_event_at": 0,
+        "completed": 0,
+        "failed": 0,
+        "blocked": 0,
+    }
+    if not events:
+        return summary
+    # 调用方传入的事件列表已经按最新优先排序；同秒事件用 rowid 打破顺序。
+    latest = events[0]
+    summary.update(
+        {
+            "last_status": latest.get("status", ""),
+            "last_stage": latest.get("stage", ""),
+            "last_message": latest.get("message", ""),
+            "last_event_at": latest.get("created_at", 0),
+            "completed": sum(1 for item in events if item.get("status") == "completed"),
+            "failed": sum(1 for item in events if item.get("status") == "failed"),
+            "blocked": sum(1 for item in events if item.get("status") == "blocked"),
+        }
+    )
+    return summary
+
+
+def get_deployment_assignment(assignment_id: str) -> dict | None:
+    conn = connect_db()
+    row = conn.execute("SELECT * FROM deployment_assignments WHERE id = ?", (assignment_id,)).fetchone()
+    conn.close()
+    if row is None:
+        return None
+    assignment = deployment_assignment_payload(row)
+    events = list_assignment_events(assignment["id"])
+    return {**assignment, "recent_events": events, "event_summary": assignment_event_summary(events)}
+
+
+def latest_assignment_for_session(session_id: str) -> dict | None:
+    conn = connect_db()
+    rows = conn.execute(
+        """
+        SELECT * FROM deployment_assignments
+        WHERE session_id = ? OR session_ids != '[]'
+        ORDER BY created_at DESC, rowid DESC
+        """,
+        (session_id,),
+    ).fetchall()
+    conn.close()
+    row = None
+    for candidate in rows:
+        session_ids = json.loads(candidate["session_ids"] or "[]")
+        if candidate["session_id"] == session_id or session_id in session_ids:
+            row = candidate
+            break
+    return deployment_assignment_payload(row) if row else None
+
+
+def list_deployment_assignments(limit: int = 100) -> list[dict]:
+    conn = connect_db()
+    rows = conn.execute("SELECT * FROM deployment_assignments ORDER BY created_at DESC, rowid DESC LIMIT ?", (limit,)).fetchall()
+    conn.close()
+    assignments = [deployment_assignment_payload(row) for row in rows]
+    if not assignments:
+        return []
+    conn = connect_db()
+    placeholders = ",".join("?" for _ in assignments)
+    event_rows = conn.execute(
+        f"""
+        SELECT * FROM client_events
+        WHERE assignment_id IN ({placeholders})
+        ORDER BY created_at DESC, rowid DESC
+        """,
+        [item["id"] for item in assignments],
+    ).fetchall()
+    conn.close()
+    events_by_assignment: dict[str, list[dict]] = {item["id"]: [] for item in assignments}
+    for row in event_rows:
+        event = client_event_payload(row)
+        bucket = events_by_assignment.setdefault(event["assignment_id"], [])
+        if len(bucket) < 20:
+            bucket.append(event)
+    return [
+        {
+            **assignment,
+            "recent_events": events_by_assignment.get(assignment["id"], []),
+            "event_summary": assignment_event_summary(events_by_assignment.get(assignment["id"], [])),
+        }
+        for assignment in assignments
+    ]
+
+
+def issue_assignment_boot_token(assignment_id: str, session_id: str, session_token: str) -> str:
+    """为一次被动装机签发短期 boot token，避免把 session token 写入 kernel cmdline。"""
+    assignment = get_deployment_assignment(assignment_id)
+    if assignment is None:
+        raise ValueError("deployment_assignment_not_found")
+    if session_id not in assignment.get("session_ids", []):
+        raise ValueError("deployment_assignment_session_mismatch")
+    conn = connect_db()
+    row = conn.execute("SELECT * FROM client_sessions WHERE session_id = ?", (session_id,)).fetchone()
+    if row is None or row["expires_at"] < int(time.time()) or not token_is_valid(session_token, row["session_token_hash"]):
+        conn.close()
+        raise ValueError("invalid_session_token")
+    token = uuid.uuid4().hex
+    now = int(time.time())
+    expires_at = now + 21600
+    token_hash = hash_session_token(token)
+    conn.execute(
+        """
+        UPDATE deployment_assignments
+        SET boot_token_hash = ?, boot_token_expires_at = ?, expires_at = MAX(expires_at, ?), updated_at = ?
+        WHERE id = ?
+        """,
+        (token_hash, expires_at, expires_at, now, assignment_id),
+    )
+    conn.execute(
+        """
+        INSERT INTO assignment_boot_tokens (
+            assignment_id, session_id, token_hash, expires_at, created_at, updated_at
+        )
+        VALUES (?, ?, ?, ?, ?, ?)
+        ON CONFLICT(assignment_id, session_id)
+        DO UPDATE SET token_hash = excluded.token_hash,
+                      expires_at = excluded.expires_at,
+                      updated_at = excluded.updated_at
+        """,
+        (assignment_id, session_id, token_hash, expires_at, now, now),
+    )
+    conn.commit()
+    conn.close()
+    return token
+
+
+def verify_postinstall_access(assignment_id: str, session_id: str, token: str) -> tuple[dict, dict]:
+    conn = connect_db()
+    assignment_row = conn.execute("SELECT * FROM deployment_assignments WHERE id = ?", (assignment_id,)).fetchone()
+    if assignment_row is None:
+        conn.close()
+        raise ValueError("deployment_assignment_not_found")
+    assignment = deployment_assignment_payload(assignment_row)
+    if session_id not in assignment.get("session_ids", []):
+        conn.close()
+        raise ValueError("deployment_assignment_session_mismatch")
+    row = conn.execute("SELECT * FROM client_sessions WHERE session_id = ?", (session_id,)).fetchone()
+    boot_token_row = conn.execute(
+        """
+        SELECT * FROM assignment_boot_tokens
+        WHERE assignment_id = ? AND session_id = ?
+        """,
+        (assignment_id, session_id),
+    ).fetchone()
+    conn.close()
+    now = int(time.time())
+    session_token_ok = bool(row and row["expires_at"] >= now and token_is_valid(token, row["session_token_hash"]))
+    boot_token_ok = bool(
+        boot_token_row
+        and boot_token_row["expires_at"] >= now
+        and token_is_valid(token, boot_token_row["token_hash"])
+    )
+    legacy_boot_token_ok = bool(
+        not boot_token_row
+        and assignment_row["boot_token_hash"]
+        and assignment_row["boot_token_expires_at"] >= now
+        and token_is_valid(token, assignment_row["boot_token_hash"])
+    )
+    if row is None or not (session_token_ok or boot_token_ok or legacy_boot_token_ok):
+        raise ValueError("invalid_session_token")
+    return assignment, client_session_payload(row)
+
+
+def postinstall_plan_payload(assignment: dict, session: dict) -> dict:
+    plan = dict(assignment.get("resolved_software_plan") or {})
+    os_family = str(plan.get("os_family") or os_family_for_boot_target(assignment["boot_target"]))
+    if os_family == "windows":
+        allowed_install_actions = sorted(WINDOWS_RUNNER_ACTIONS)
+    elif os_family in {"ubuntu", "linux"}:
+        allowed_install_actions = sorted(UBUNTU_RUNNER_ACTIONS)
+    else:
+        allowed_install_actions = []
+    plan["assignment_id"] = assignment["id"]
+    plan["session_id"] = session["session_id"]
+    plan["boot_target"] = assignment["boot_target"]
+    plan["boot_label"] = assignment["boot_label"]
+    plan["install_preset_id"] = assignment.get("install_preset_id", "")
+    plan["task_sequence_plan"] = assignment.get("task_sequence_plan") or {}
+    plan["execution_model"] = {
+        "server_executes_installers": False,
+        "client_downloads_from_official_source": True,
+        "raw_command_allowed": False,
+        "allowed_install_actions": allowed_install_actions,
+    }
+    if os_family == "windows":
+        plan["activation"] = {"kms": windows_kms_activation_plan()}
+    return plan
+
+
+def validate_postinstall_plan_for_runner(plan: dict, os_family: str) -> None:
+    if plan.get("third_party_binary_stored") is not False or plan.get("client_downloads_from_official_source") is not True:
+        raise ValueError("invalid_postinstall_plan_policy")
+    allowed_actions = WINDOWS_RUNNER_ACTIONS if os_family == "windows" else UBUNTU_RUNNER_ACTIONS
+    expected_phase = "windows_first_boot" if os_family == "windows" else "linux_first_boot"
+    expected_os_family = "windows" if os_family == "windows" else "ubuntu"
+    for variant in plan.get("variants", []):
+        if variant.get("os_family") != expected_os_family:
+            raise ValueError(f"postinstall_os_family_mismatch:{variant.get('id')}:{variant.get('os_family')}")
+        if variant.get("review_status") != "approved":
+            raise ValueError(f"postinstall_variant_not_approved:{variant.get('id')}")
+        if variant.get("install_phase") != expected_phase:
+            raise ValueError(f"postinstall_phase_not_supported:{variant.get('id')}")
+        if variant.get("install_action") not in allowed_actions:
+            raise ValueError(f"postinstall_action_not_supported:{variant.get('id')}:{variant.get('install_action')}")
+        if variant.get("install_action") == "apt_package" and not SAFE_APT_PACKAGE_RE.match(str(variant.get("package_name", ""))):
+            raise ValueError(f"postinstall_package_name_invalid:{variant.get('id')}")
+        if variant.get("install_action") == "apt_package" and not is_supported_ubuntu_apt_source(variant):
+            raise ValueError(f"postinstall_apt_repo_not_supported:{variant.get('id')}")
+        if variant.get("install_action") == "download_deb" and variant.get("installer_type") != "deb":
+            raise ValueError(f"postinstall_installer_type_invalid:{variant.get('id')}")
+        if variant.get("install_action") == "msi_install" and variant.get("installer_type") != "msi":
+            raise ValueError(f"postinstall_installer_type_invalid:{variant.get('id')}")
+        if variant.get("install_action") == "exe_install":
+            if variant.get("installer_type") != "exe":
+                raise ValueError(f"postinstall_installer_type_invalid:{variant.get('id')}")
+            if not str(variant.get("silent_args", "")).strip():
+                raise ValueError(f"postinstall_exe_silent_args_required:{variant.get('id')}")
+        if variant.get("install_action") == "office_odt_install":
+            if variant.get("installer_type") != "office_odt":
+                raise ValueError(f"postinstall_installer_type_invalid:{variant.get('id')}")
+            if not SAFE_OFFICE_PRODUCT_ID_RE.match(str(variant.get("package_name", ""))):
+                raise ValueError(f"postinstall_office_product_id_invalid:{variant.get('id')}")
+        download_url = str(variant.get("download_url", ""))
+        if variant.get("install_action") != "apt_package" and not is_https_url(download_url):
+            raise ValueError(f"postinstall_download_url_blocked:{variant.get('id')}")
+        if download_url and is_blocked_software_download_host(download_url):
+            raise ValueError(f"postinstall_download_url_blocked:{variant.get('id')}")
+        if variant.get("signature_policy") == "sha256_required" and not variant.get("sha256"):
+            raise ValueError(f"postinstall_sha256_required:{variant.get('id')}")
+
+
+def shell_single_quote(value: object) -> str:
+    text = str(value)
+    return "'" + text.replace("'", "'\"'\"'") + "'"
+
+
+def ps_single_quote(value: object) -> str:
+    text = str(value)
+    return "'" + text.replace("'", "''") + "'"
+
+
+def sanitize_event_message(value: object) -> str:
+    text = SENSITIVE_EVENT_TEXT_RE.sub("<redacted>", str(value))
+    return SAFE_IPXE_TEXT_RE.sub("-", text)[:160]
+
+
+def bounded_int(value: object, min_value: int, max_value: int) -> int:
+    if isinstance(value, bool):
+        raise ValueError("invalid_integer_payload")
+    try:
+        number = int(value)
+    except (TypeError, ValueError):
+        raise ValueError("invalid_integer_payload") from None
+    if number < min_value or number > max_value:
+        raise ValueError("integer_payload_out_of_range")
+    return number
+
+
+def ubuntu_postinstall_runner(assignment: dict, session: dict, token: str) -> str:
+    plan = postinstall_plan_payload(assignment, session)
+    validate_postinstall_plan_for_runner(plan, "ubuntu")
+    lines = [
+        "#!/bin/sh",
+        "set -eu",
+        "",
+        "# SynaBoot Ubuntu first-boot postinstall runner.",
+        "# 只消费后端已审核的 resolved_software_plan，不执行 raw command。",
+        f"ASSIGNMENT_ID={shell_single_quote(assignment['id'])}",
+        f"SESSION_ID={shell_single_quote(session['session_id'])}",
+        f"SESSION_TOKEN={shell_single_quote(token)}",
+        f"BASE_URL={shell_single_quote(f'http://{SERVER_IP}:{SYNABOOT_PORT}')}",
+        "WORK_DIR=/var/lib/synaboot/postinstall",
+        "mkdir -p \"$WORK_DIR\"",
+        "PLAN_FILE=\"$WORK_DIR/plan.json\"",
+        "log_event() {",
+        "  stage=\"$1\"; status=\"$2\"; message=\"$3\"",
+        "  python3 - \"$BASE_URL\" \"$ASSIGNMENT_ID\" \"$SESSION_ID\" \"$SESSION_TOKEN\" \"$stage\" \"$status\" \"$message\" <<'PY' || true",
+        "import json, sys, urllib.request",
+        "base, assignment, session, token, stage, status, message = sys.argv[1:8]",
+        "payload = json.dumps({'session_id': session, 'token': token, 'stage': stage, 'status': status, 'message': message}).encode()",
+        "req = urllib.request.Request(f'{base}/api/postinstall/assignments/{assignment}/events', data=payload, headers={'Content-Type': 'application/json'}, method='POST')",
+        "urllib.request.urlopen(req, timeout=10).read()",
+        "PY",
+        "}",
+        "log_event runner started 'Ubuntu postinstall runner started'",
+        "trap 'code=$?; if [ \"$code\" -ne 0 ]; then log_event runner failed \"Ubuntu postinstall runner failed\"; fi' EXIT",
+        "python3 - \"$BASE_URL\" \"$ASSIGNMENT_ID\" \"$SESSION_ID\" \"$SESSION_TOKEN\" \"$PLAN_FILE\" <<'PY'",
+        "import sys, urllib.request",
+        "base, assignment, session, token, plan_file = sys.argv[1:6]",
+        "url = f'{base}/api/postinstall/assignments/{assignment}/plan?session_id={session}&token={token}'",
+        "data = urllib.request.urlopen(url, timeout=30).read()",
+        "open(plan_file, 'wb').write(data)",
+        "PY",
+        "python3 - \"$BASE_URL\" \"$ASSIGNMENT_ID\" \"$SESSION_ID\" \"$SESSION_TOKEN\" \"$PLAN_FILE\" <<'PY'",
+        "import hashlib, ipaddress, json, os, re, subprocess, sys, tempfile, time, urllib.parse, urllib.request",
+        "base, assignment, session, token, plan_file = sys.argv[1:6]",
+        "plan = json.load(open(plan_file, encoding='utf-8'))",
+        "safe_pkg = re.compile(r'^[a-z0-9][a-z0-9+.-]{0,127}$')",
+        "allowed_actions = {'apt_package', 'download_deb'}",
+        "def send_event(stage, status, message, payload=None):",
+        "    body = {'session_id': session, 'token': token, 'stage': stage, 'status': status, 'message': message}",
+        "    if payload:",
+        "        body['payload'] = payload",
+        "    data = json.dumps(body).encode()",
+        "    req = urllib.request.Request(f'{base}/api/postinstall/assignments/{assignment}/events', data=data, headers={'Content-Type': 'application/json'}, method='POST')",
+        "    try:",
+        "        urllib.request.urlopen(req, timeout=10).read()",
+        "    except Exception:",
+        "        pass",
+        "def blocked_url(value):",
+        "    parsed = urllib.parse.urlparse(value)",
+        "    if parsed.scheme != 'https' or not parsed.netloc:",
+        "        return True",
+        "    if parsed.path.startswith(('/images', '/boot')):",
+        "        return True",
+        "    host = (parsed.hostname or '').lower()",
+        "    if host in {'localhost', 'localhost.localdomain'}:",
+        "        return True",
+        "    try:",
+        "        addr = ipaddress.ip_address(host)",
+        "    except ValueError:",
+        "        return False",
+        "    return addr.is_loopback or addr.is_private or addr.is_link_local or addr.is_reserved",
+        "def wait_for_apt_locks():",
+        "    lock_paths = ['/var/lib/dpkg/lock-frontend', '/var/lib/dpkg/lock', '/var/cache/apt/archives/lock']",
+        "    deadline = time.time() + 300",
+        "    while time.time() < deadline:",
+        "        busy = False",
+        "        for lock_path in lock_paths:",
+        "            if os.path.exists(lock_path):",
+        "                try:",
+        "                    subprocess.check_call(['fuser', lock_path], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)",
+        "                    busy = True",
+        "                    break",
+        "                except (FileNotFoundError, subprocess.CalledProcessError):",
+        "                    continue",
+        "        if not busy:",
+        "            return",
+        "        time.sleep(5)",
+        "    raise SystemExit('apt/dpkg lock timeout')",
+        "if plan.get('third_party_binary_stored') is not False or plan.get('client_downloads_from_official_source') is not True:",
+        "    raise SystemExit('invalid plan policy')",
+        "if plan.get('os_family') not in {'ubuntu', 'linux'}:",
+        "    raise SystemExit('invalid plan os_family')",
+        "for item in plan.get('variants', []):",
+        "    variant_id = str(item.get('id') or 'unknown')",
+        "    try:",
+        "        send_event('variant', 'started', f'Installing {variant_id}', {'variant_id': variant_id})",
+        "        action = item.get('install_action')",
+        "        url = item.get('download_url', '')",
+        "        sha256 = item.get('sha256', '')",
+        "        if item.get('os_family') != 'ubuntu' or item.get('install_phase') != 'linux_first_boot' or item.get('review_status') != 'approved':",
+        "            raise SystemExit(f'blocked variant policy: {variant_id}')",
+        "        if action not in allowed_actions:",
+        "            raise SystemExit(f'blocked install action: {action}')",
+        "        if item.get('signature_policy') == 'sha256_required' and not sha256:",
+        "            raise SystemExit(f'missing sha256 for {variant_id}')",
+        "        wait_for_apt_locks()",
+        "        if action == 'apt_package':",
+        "            pkg = item.get('package_name', '')",
+        "            if not safe_pkg.match(pkg):",
+        "                raise SystemExit(f'invalid apt package name for {variant_id}')",
+        "            subprocess.check_call(['apt-get', 'update'])",
+        "            subprocess.check_call(['apt-get', 'install', '-y', pkg])",
+        "        elif action == 'download_deb':",
+        "            if item.get('installer_type') != 'deb':",
+        "                raise SystemExit(f'invalid installer type for {variant_id}')",
+        "            if blocked_url(url):",
+        "                raise SystemExit(f'blocked download url for {variant_id}')",
+        "            fd, path = tempfile.mkstemp(suffix='.deb')",
+        "            os.close(fd)",
+        "            try:",
+        "                urllib.request.urlretrieve(url, path)",
+        "                if sha256:",
+        "                    digest = hashlib.sha256()",
+        "                    with open(path, 'rb') as handle:",
+        "                        for chunk in iter(lambda: handle.read(1024 * 1024), b''):",
+        "                            digest.update(chunk)",
+        "                    if digest.hexdigest().lower() != sha256.lower():",
+        "                        raise SystemExit(f'sha256 mismatch for {variant_id}')",
+        "                subprocess.check_call(['apt-get', 'install', '-y', path])",
+        "            finally:",
+        "                try:",
+        "                    os.remove(path)",
+        "                except FileNotFoundError:",
+        "                    pass",
+        "        send_event('variant', 'completed', f'Installed {variant_id}', {'variant_id': variant_id})",
+        "    except BaseException:",
+        "        send_event('variant', 'failed', f'Install failed for {variant_id}', {'variant_id': variant_id})",
+        "        raise",
+        "PY",
+        "trap - EXIT",
+        "log_event runner completed 'Ubuntu postinstall runner completed'",
+    ]
+    if not plan.get("variants"):
+        lines.extend(["", "echo 'No software variants assigned; nothing to install.'"])
+    return "\n".join(lines) + "\n"
+
+
+def windows_postinstall_runner(assignment: dict, session: dict, token: str) -> str:
+    plan = postinstall_plan_payload(assignment, session)
+    validate_postinstall_plan_for_runner(plan, "windows")
+    return f"""# SynaBoot Windows first-boot postinstall runner.
+# 只消费后端已审核的 resolved_software_plan，不执行 raw command。
+# Office 使用 Microsoft Office Deployment Tool；Windows/Office 激活仅使用管理员配置的自有 KMS。
+$ErrorActionPreference = "Stop"
+$AssignmentId = {ps_single_quote(assignment['id'])}
+$SessionId = {ps_single_quote(session['session_id'])}
+$SessionToken = {ps_single_quote(token)}
+$BaseUrl = {ps_single_quote(f'http://{SERVER_IP}:{SYNABOOT_PORT}')}
+$WorkDir = Join-Path $env:ProgramData "SynaBoot\\PostInstall"
+New-Item -ItemType Directory -Force -Path $WorkDir | Out-Null
+$PlanFile = Join-Path $WorkDir "plan.json"
+
+function Send-SynaBootEvent([string]$Stage, [string]$Status, [string]$Message, [hashtable]$Payload = @{{}}) {{
+  $BodyObject = @{{ session_id = $SessionId; token = $SessionToken; stage = $Stage; status = $Status; message = $Message }}
+  if ($Payload.Count -gt 0) {{ $BodyObject.payload = $Payload }}
+  $Body = $BodyObject | ConvertTo-Json -Compress
+  try {{ Invoke-RestMethod -Method Post -Uri "$BaseUrl/api/postinstall/assignments/$AssignmentId/events" -ContentType "application/json" -Body $Body | Out-Null }} catch {{ }}
+}}
+
+Send-SynaBootEvent "runner" "started" "Windows postinstall runner started"
+try {{
+Invoke-WebRequest -UseBasicParsing -Uri "$BaseUrl/api/postinstall/assignments/$AssignmentId/plan?session_id=$SessionId&token=$SessionToken" -OutFile $PlanFile
+$Plan = Get-Content $PlanFile -Raw | ConvertFrom-Json
+if ($Plan.third_party_binary_stored -ne $false -or $Plan.client_downloads_from_official_source -ne $true) {{ throw "Invalid SynaBoot software plan policy" }}
+if ($Plan.os_family -ne "windows") {{ throw "Invalid SynaBoot software plan os_family" }}
+
+function Test-SynaBootDownloadUrl([string]$Url) {{
+  $Uri = [System.Uri]$Url
+  if ($Uri.Scheme -ne "https") {{ return $false }}
+  if ($Uri.AbsolutePath.StartsWith("/images") -or $Uri.AbsolutePath.StartsWith("/boot")) {{ return $false }}
+  $HostName = $Uri.Host.ToLowerInvariant()
+  if ($HostName -eq "localhost" -or $HostName -eq "localhost.localdomain") {{ return $false }}
+  $Address = $null
+  if ([System.Net.IPAddress]::TryParse($HostName, [ref]$Address)) {{
+    $Bytes = $Address.GetAddressBytes()
+    if ($Address.IsIPv6LinkLocal -or [System.Net.IPAddress]::IsLoopback($Address)) {{ return $false }}
+    if ($Bytes.Length -eq 4) {{
+      if ($Bytes[0] -eq 10 -or $Bytes[0] -eq 127 -or ($Bytes[0] -eq 169 -and $Bytes[1] -eq 254) -or ($Bytes[0] -eq 172 -and $Bytes[1] -ge 16 -and $Bytes[1] -le 31) -or ($Bytes[0] -eq 192 -and $Bytes[1] -eq 168)) {{ return $false }}
+    }}
+  }}
+  return $true
+}}
+
+function Test-SynaBootOfficeProductId([string]$ProductId) {{
+  return $ProductId -match '^[A-Za-z0-9]{{3,64}}$'
+}}
+
+function Get-SynaBootOfficeChannel([string]$ProductId) {{
+  if ($ProductId -match '2024.*Volume$') {{ return "PerpetualVL2024" }}
+  if ($ProductId -match '2021.*Volume$') {{ return "PerpetualVL2021" }}
+  if ($ProductId -match '2019.*Volume$') {{ return "PerpetualVL2019" }}
+  return "Current"
+}}
+
+function Invoke-SynaBootMsiInstall($Item) {{
+  $Installer = Join-Path $WorkDir ($Item.id + ".msi")
+  try {{
+    Invoke-WebRequest -UseBasicParsing -Uri $Item.download_url -OutFile $Installer
+    if ($Item.sha256) {{
+      $Actual = (Get-FileHash -Algorithm SHA256 $Installer).Hash.ToLower()
+      if ($Actual -ne $Item.sha256.ToLower()) {{ throw "sha256 mismatch for $($Item.id)" }}
+    }}
+    $Args = @("/i", $Installer)
+    if ($Item.silent_args) {{ $Args += $Item.silent_args }}
+    $Process = Start-Process msiexec.exe -ArgumentList $Args -Wait -PassThru -NoNewWindow
+    $SuccessCodes = @($Item.return_codes.success)
+    $SoftRebootCodes = @($Item.return_codes.soft_reboot)
+    if (($SuccessCodes + $SoftRebootCodes) -notcontains $Process.ExitCode) {{ throw "msiexec failed with exit code $($Process.ExitCode)" }}
+  }} finally {{
+    Remove-Item -LiteralPath $Installer -Force -ErrorAction SilentlyContinue
+  }}
+}}
+
+function Invoke-SynaBootExeInstall($Item) {{
+  $Installer = Join-Path $WorkDir ($Item.id + ".exe")
+  try {{
+    Invoke-WebRequest -UseBasicParsing -Uri $Item.download_url -OutFile $Installer
+    if ($Item.sha256) {{
+      $Actual = (Get-FileHash -Algorithm SHA256 $Installer).Hash.ToLower()
+      if ($Actual -ne $Item.sha256.ToLower()) {{ throw "sha256 mismatch for $($Item.id)" }}
+    }}
+    $Args = @()
+    if ($Item.silent_args) {{ $Args += $Item.silent_args }}
+    if (-not $Args.Count) {{ throw "EXE installer requires reviewed silent_args: $($Item.id)" }}
+    $Process = Start-Process -FilePath $Installer -ArgumentList $Args -Wait -PassThru -NoNewWindow
+    $SuccessCodes = @($Item.return_codes.success)
+    $SoftRebootCodes = @($Item.return_codes.soft_reboot)
+    if (($SuccessCodes + $SoftRebootCodes) -notcontains $Process.ExitCode) {{ throw "EXE installer failed with exit code $($Process.ExitCode)" }}
+  }} finally {{
+    Remove-Item -LiteralPath $Installer -Force -ErrorAction SilentlyContinue
+  }}
+}}
+
+function Invoke-SynaBootOfficeOdtInstall($Item) {{
+  $ProductId = [string]$Item.package_name
+  if (-not (Test-SynaBootOfficeProductId $ProductId)) {{ throw "Invalid Office product id: $($Item.id)" }}
+  $OdtInstaller = Join-Path $WorkDir ($Item.id + "-odt.exe")
+  $OdtDir = Join-Path $WorkDir ($Item.id + "-odt")
+  $Channel = Get-SynaBootOfficeChannel $ProductId
+  try {{
+    New-Item -ItemType Directory -Force -Path $OdtDir | Out-Null
+    Invoke-WebRequest -UseBasicParsing -Uri $Item.download_url -OutFile $OdtInstaller
+    if ($Item.sha256) {{
+      $Actual = (Get-FileHash -Algorithm SHA256 $OdtInstaller).Hash.ToLower()
+      if ($Actual -ne $Item.sha256.ToLower()) {{ throw "sha256 mismatch for $($Item.id)" }}
+    }}
+    $Extract = Start-Process -FilePath $OdtInstaller -ArgumentList @("/quiet", "/extract:$OdtDir") -Wait -PassThru -NoNewWindow
+    if ($Extract.ExitCode -ne 0) {{ throw "Office Deployment Tool extract failed with exit code $($Extract.ExitCode)" }}
+    $SetupExe = Join-Path $OdtDir "setup.exe"
+    if (-not (Test-Path -LiteralPath $SetupExe -PathType Leaf)) {{ throw "Office setup.exe not found after ODT extract" }}
+    $ConfigFile = Join-Path $OdtDir "configuration.xml"
+    @"
+<Configuration>
+  <Add OfficeClientEdition="64" Channel="$Channel">
+    <Product ID="$ProductId">
+      <Language ID="MatchOS" />
+    </Product>
+  </Add>
+  <Display Level="None" AcceptEULA="TRUE" />
+  <Property Name="AUTOACTIVATE" Value="1" />
+</Configuration>
+"@ | Set-Content -LiteralPath $ConfigFile -Encoding UTF8
+    $Install = Start-Process -FilePath $SetupExe -ArgumentList @("/configure", $ConfigFile) -Wait -PassThru -NoNewWindow
+    if ($Install.ExitCode -ne 0) {{ throw "Office Deployment Tool configure failed with exit code $($Install.ExitCode)" }}
+  }} finally {{
+    Remove-Item -LiteralPath $OdtInstaller -Force -ErrorAction SilentlyContinue
+    Remove-Item -LiteralPath $OdtDir -Recurse -Force -ErrorAction SilentlyContinue
+  }}
+}}
+
+function Get-SynaBootOfficeOsppPath {{
+  $Candidates = @(
+    "$env:ProgramFiles\\Microsoft Office\\Office16\\OSPP.VBS",
+    "${{env:ProgramFiles(x86)}}\\Microsoft Office\\Office16\\OSPP.VBS",
+    "$env:ProgramFiles\\Microsoft Office\\root\\Office16\\OSPP.VBS",
+    "${{env:ProgramFiles(x86)}}\\Microsoft Office\\root\\Office16\\OSPP.VBS"
+  )
+  foreach ($Path in $Candidates) {{
+    if ($Path -and (Test-Path -LiteralPath $Path -PathType Leaf)) {{ return $Path }}
+  }}
+  return ""
+}}
+
+function Invoke-SynaBootWindowsKmsActivation($Kms) {{
+  if (-not $Kms -or -not $Kms.enabled -or -not $Kms.windows) {{ return }}
+  if (-not $Kms.host -or -not $Kms.port) {{ throw "KMS host or port missing for Windows activation" }}
+  $Slmgr = Join-Path $env:SystemRoot "System32\\slmgr.vbs"
+  Send-SynaBootEvent "runner" "started" "Windows KMS activation started" @{{ action_id = "windows_kms_activation" }}
+  cscript.exe //nologo $Slmgr /skms "$($Kms.host):$($Kms.port)"
+  cscript.exe //nologo $Slmgr /ato
+  Send-SynaBootEvent "runner" "completed" "Windows KMS activation completed" @{{ action_id = "windows_kms_activation" }}
+}}
+
+function Invoke-SynaBootOfficeKmsActivation($Kms) {{
+  if (-not $Kms -or -not $Kms.enabled -or -not $Kms.office) {{ return }}
+  if (-not $Kms.host -or -not $Kms.port) {{ throw "KMS host or port missing for Office activation" }}
+  $Ospp = Get-SynaBootOfficeOsppPath
+  if (-not $Ospp) {{ throw "Office ospp.vbs not found for KMS activation" }}
+  Send-SynaBootEvent "runner" "started" "Office KMS activation started" @{{ action_id = "office_kms_activation" }}
+  cscript.exe //nologo $Ospp /sethst:$($Kms.host)
+  cscript.exe //nologo $Ospp /setprt:$($Kms.port)
+  cscript.exe //nologo $Ospp /act
+  Send-SynaBootEvent "runner" "completed" "Office KMS activation completed" @{{ action_id = "office_kms_activation" }}
+}}
+
+foreach ($Item in $Plan.variants) {{
+  $VariantId = [string]$Item.id
+  try {{
+    Send-SynaBootEvent "variant" "started" "Installing $VariantId" @{{ variant_id = $VariantId }}
+    if ($Item.os_family -ne "windows" -or $Item.install_phase -ne "windows_first_boot" -or $Item.review_status -ne "approved") {{
+      throw "Blocked SynaBoot software variant policy: $VariantId"
+    }}
+    if ($Item.install_action -notin @("msi_install", "exe_install", "office_odt_install")) {{
+      throw "Blocked SynaBoot install action: $($Item.install_action)"
+    }}
+    if ($Item.install_action -eq "msi_install" -and $Item.installer_type -ne "msi") {{
+      throw "Blocked SynaBoot installer type: $VariantId"
+    }}
+    if ($Item.install_action -eq "exe_install" -and $Item.installer_type -ne "exe") {{
+      throw "Blocked SynaBoot installer type: $VariantId"
+    }}
+    if ($Item.install_action -eq "office_odt_install" -and $Item.installer_type -ne "office_odt") {{
+      throw "Blocked SynaBoot installer type: $VariantId"
+    }}
+    if (-not (Test-SynaBootDownloadUrl $Item.download_url)) {{
+      throw "Blocked SynaBoot download URL: $VariantId"
+    }}
+    if ($Item.signature_policy -eq "sha256_required" -and -not $Item.sha256) {{
+      throw "Missing required sha256: $VariantId"
+    }}
+    switch ($Item.install_action) {{
+      "msi_install" {{ Invoke-SynaBootMsiInstall $Item }}
+      "exe_install" {{ Invoke-SynaBootExeInstall $Item }}
+      "office_odt_install" {{ Invoke-SynaBootOfficeOdtInstall $Item }}
+    }}
+    Send-SynaBootEvent "variant" "completed" "Installed $VariantId" @{{ variant_id = $VariantId }}
+  }} catch {{
+    Send-SynaBootEvent "variant" "failed" "Install failed for $VariantId" @{{ variant_id = $VariantId }}
+    throw
+  }}
+}}
+Invoke-SynaBootWindowsKmsActivation $Plan.activation.kms
+Invoke-SynaBootOfficeKmsActivation $Plan.activation.kms
+Send-SynaBootEvent "runner" "completed" "Windows postinstall runner completed"
+}} catch {{
+  Send-SynaBootEvent "runner" "failed" "Windows postinstall runner failed"
+  throw
+}}
+"""
+
+
+def ubuntu_nocloud_meta_data(assignment: dict, session: dict) -> str:
+    instance_id = f"synaboot-{assignment['id']}-{session['session_id']}"
+    return f"""instance-id: {instance_id}
+local-hostname: synaboot-client
+"""
+
+
+def ubuntu_nocloud_user_data(assignment: dict, session: dict, token: str) -> str:
+    validate_postinstall_plan_for_runner(postinstall_plan_payload(assignment, session), "ubuntu")
+    runner_url = f"http://{SERVER_IP}:{SYNABOOT_PORT}/api/postinstall/assignments/{assignment['id']}/runner.sh?session_id={session['session_id']}&token={token}"
+    runner_url_shell = shell_single_quote(runner_url)
+    return f"""#cloud-config
+autoinstall:
+  version: 1
+  interactive-sections:
+    - identity
+    - storage
+  late-commands:
+    - curtin in-target --target=/target -- mkdir -p /usr/local/sbin /etc/systemd/system /var/lib/synaboot/postinstall
+    - |
+      cat > /target/usr/local/sbin/synaboot-postinstall-bootstrap.sh <<'EOF'
+      #!/bin/sh
+      set -eu
+      WORK_DIR=/var/lib/synaboot/postinstall
+      RUNNER_URL={runner_url_shell}
+      mkdir -p "$WORK_DIR"
+      attempt=1
+      while [ "$attempt" -le 20 ]; do
+        if command -v curl >/dev/null 2>&1; then
+          curl -fsSL "$RUNNER_URL" -o "$WORK_DIR/runner.sh" && break
+        else
+          wget -O "$WORK_DIR/runner.sh" "$RUNNER_URL" && break
+        fi
+        rm -f "$WORK_DIR/runner.sh"
+        attempt=$((attempt + 1))
+        sleep 15
+      done
+      test -s "$WORK_DIR/runner.sh"
+      chmod 700 "$WORK_DIR/runner.sh"
+      /bin/sh "$WORK_DIR/runner.sh"
+      rm -f "$WORK_DIR/runner.sh"
+      systemctl disable synaboot-postinstall.service >/dev/null 2>&1 || true
+      EOF
+    - chmod 700 /target/usr/local/sbin/synaboot-postinstall-bootstrap.sh
+    - |
+      cat > /target/etc/systemd/system/synaboot-postinstall.service <<'EOF'
+      [Unit]
+      Description=SynaBoot first-boot software installation
+      After=network-online.target
+      Wants=network-online.target
+      StartLimitBurst=20
+      StartLimitIntervalSec=15min
+
+      [Service]
+      Type=oneshot
+      ExecStart=/usr/local/sbin/synaboot-postinstall-bootstrap.sh
+      RemainAfterExit=yes
+      Restart=on-failure
+      RestartSec=30s
+
+      [Install]
+      WantedBy=multi-user.target
+      EOF
+    - curtin in-target --target=/target -- systemctl enable synaboot-postinstall.service
+"""
+
+
+def windows_setupcomplete_cmd(assignment: dict, session: dict, token: str) -> str:
+    validate_postinstall_plan_for_runner(postinstall_plan_payload(assignment, session), "windows")
+    runner_url = f"http://{SERVER_IP}:{SYNABOOT_PORT}/api/postinstall/assignments/{assignment['id']}/runner.ps1?session_id={session['session_id']}&token={token}"
+    runner_url_ps = ps_single_quote(runner_url)
+    return f"""@echo off
+set WORKDIR=%ProgramData%\\SynaBoot\\PostInstall
+powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "New-Item -ItemType Directory -Force -Path $env:ProgramData\\SynaBoot\\PostInstall | Out-Null; Invoke-WebRequest -Uri {runner_url_ps} -OutFile $env:ProgramData\\SynaBoot\\PostInstall\\runner.ps1; powershell.exe -NoProfile -ExecutionPolicy Bypass -File $env:ProgramData\\SynaBoot\\PostInstall\\runner.ps1"
+exit /b %ERRORLEVEL%
+"""
+
+
+def windows_hotpe_injection_helper_ps1(assignment: dict, session: dict, token: str) -> str:
+    """生成 HotPE/WinPE 中手动注入 SetupComplete 的受控辅助脚本。
+
+    该脚本是 Windows 软件自动安装闭环的受控注入点。它优先使用管理员明确传入的
+    Windows 根目录；如未传入，只在唯一发现一个离线 Windows 目录时自动注入。
+    脚本不执行分区/格式化，也不下载第三方软件包；真正的软件安装发生在已安装
+    Windows 的首次启动 runner 中。
+    """
+    validate_postinstall_plan_for_runner(postinstall_plan_payload(assignment, session), "windows")
+    setupcomplete_url = f"http://{SERVER_IP}:{SYNABOOT_PORT}/api/postinstall/assignments/{assignment['id']}/setupcomplete.cmd?session_id={session['session_id']}&token={token}"
+    setupcomplete_url_ps = ps_single_quote(setupcomplete_url)
+    assignment_id_ps = ps_single_quote(assignment["id"])
+    session_id_ps = ps_single_quote(session["session_id"])
+    return f"""# SynaBoot Windows postinstall injection helper for HotPE/WinPE.
+# 用途：在已确认目标 Windows 目录后，写入 SetupComplete.cmd。
+# 安全边界：不清盘，不格式化，不改网络，不托管第三方软件安装包。
+param(
+  [string]$WindowsRoot = ""
+)
+
+$ErrorActionPreference = "Stop"
+$AssignmentId = {assignment_id_ps}
+$SessionId = {session_id_ps}
+$SetupCompleteUrl = {setupcomplete_url_ps}
+
+function Get-SynaBootWindowsRootCandidates {{
+  $Candidates = New-Object System.Collections.Generic.List[string]
+  Get-PSDrive -PSProvider FileSystem | ForEach-Object {{
+    $RootPath = $_.Root.TrimEnd("\\")
+    if ($RootPath) {{
+      foreach ($Candidate in @((Join-Path $RootPath "Windows"), $RootPath)) {{
+        $SystemHive = Join-Path $Candidate "System32\\config\\SYSTEM"
+        if (Test-Path -LiteralPath $SystemHive -PathType Leaf) {{
+          if (-not $Candidates.Contains($Candidate)) {{ $Candidates.Add($Candidate) }}
+        }}
+      }}
+    }}
+  }}
+  return @($Candidates)
+}}
+
+$Root = $WindowsRoot.TrimEnd("\\", "/")
+if ($Root) {{
+  if (-not (Test-Path -LiteralPath $Root -PathType Container)) {{
+    throw "WindowsRoot does not exist: $Root"
+  }}
+  $WindowsDir = if ((Split-Path -Leaf $Root) -ieq "Windows") {{ $Root }} else {{ Join-Path $Root "Windows" }}
+}} else {{
+  $Candidates = @(Get-SynaBootWindowsRootCandidates)
+  if ($Candidates.Count -eq 0) {{
+    throw "No installed Windows directory was found. Re-run with -WindowsRoot X:\\Windows after installation."
+  }}
+  if ($Candidates.Count -gt 1) {{
+    throw ("Multiple Windows directories found: " + ($Candidates -join ", ") + ". Re-run with explicit -WindowsRoot.")
+  }}
+  $WindowsDir = $Candidates[0]
+}}
+if (-not (Test-Path -LiteralPath $WindowsDir -PathType Container)) {{
+  throw "Windows directory not found: $WindowsDir"
+}}
+
+$SystemHive = Join-Path $WindowsDir "System32\\config\\SYSTEM"
+if (-not (Test-Path -LiteralPath $SystemHive -PathType Leaf)) {{
+  throw "Target does not look like an installed Windows system: $SystemHive"
+}}
+
+$ScriptsDir = Join-Path $WindowsDir "Setup\\Scripts"
+New-Item -ItemType Directory -Force -Path $ScriptsDir | Out-Null
+$SetupCompletePath = Join-Path $ScriptsDir "SetupComplete.cmd"
+
+Invoke-WebRequest -UseBasicParsing -Uri $SetupCompleteUrl -OutFile $SetupCompletePath
+if (-not (Test-Path -LiteralPath $SetupCompletePath -PathType Leaf)) {{
+  throw "SetupComplete.cmd was not written"
+}}
+
+$Marker = Join-Path $ScriptsDir "synaboot-postinstall-assignment.txt"
+@(
+  "assignment_id=$AssignmentId",
+  "session_id=$SessionId",
+  "created_at=$(Get-Date -Format o)",
+  "note=SetupComplete.cmd will download the token-protected runner from SynaBoot on first boot."
+) | Set-Content -LiteralPath $Marker -Encoding ASCII
+
+Write-Host "SynaBoot SetupComplete.cmd injected into $SetupCompletePath"
+Write-Host "Reboot into the installed Windows system to run the postinstall runner."
+"""
+
+
+def record_postinstall_event(assignment_id: str, payload: dict) -> dict:
+    session_id = str(payload.get("session_id", "")).strip()
+    token = str(payload.get("token", "")).strip()
+    assignment, _session = verify_postinstall_access(assignment_id, session_id, token)
+    stage = str(payload.get("stage", ""))[:80]
+    status = str(payload.get("status", ""))[:80]
+    if stage not in POSTINSTALL_EVENT_STAGES:
+        raise ValueError("invalid_postinstall_event_stage")
+    if status not in POSTINSTALL_EVENT_STATUSES:
+        raise ValueError("invalid_postinstall_event_status")
+    event_payload = payload.get("payload", {})
+    if not isinstance(event_payload, dict):
+        raise ValueError("invalid_postinstall_event_payload")
+    allowed_payload: dict[str, object] = {}
+    for key in {"variant_id", "action_id"}:
+        if key in event_payload:
+            allowed_payload[key] = SAFE_IPXE_TEXT_RE.sub("-", str(event_payload.get(key, "")))[:120]
+    if "exit_code" in event_payload:
+        allowed_payload["exit_code"] = bounded_int(event_payload.get("exit_code"), -32768, 32767)
+    if "duration_seconds" in event_payload:
+        allowed_payload["duration_seconds"] = bounded_int(event_payload.get("duration_seconds"), 0, 86400)
+    event = {
+        "id": uuid.uuid4().hex,
+        "session_id": session_id,
+        "assignment_id": assignment["id"],
+        "event_type": "postinstall",
+        "stage": stage,
+        "status": status,
+        "message": sanitize_event_message(payload.get("message", "")),
+        "payload": json.dumps(allowed_payload, ensure_ascii=False),
+        "created_at": int(time.time()),
+    }
+    conn = connect_db()
+    conn.execute(
+        """
+        INSERT INTO client_events (
+            id, session_id, assignment_id, event_type, stage, status, message, payload, created_at
+        ) VALUES (
+            :id, :session_id, :assignment_id, :event_type, :stage, :status, :message, :payload, :created_at
+        )
+        """,
+        event,
+    )
+    if stage == "runner":
+        conn.execute(
+            "UPDATE deployment_assignments SET status = ?, updated_at = ? WHERE id = ?",
+            (f"postinstall_{event['status']}"[:80], event["created_at"], assignment["id"]),
+        )
+    else:
+        conn.execute(
+            "UPDATE deployment_assignments SET updated_at = ? WHERE id = ?",
+            (event["created_at"], assignment["id"]),
+        )
+    conn.commit()
+    conn.close()
+    return {**event, "payload": allowed_payload}
+
+
+def assignment_options(session_ids: list[str]) -> dict | None:
+    sessions = [get_client_session(session_id) for session_id in session_ids if session_id]
+    sessions = [session for session in sessions if session is not None]
+    if not sessions:
+        return None
+    targets = boot_target_catalog()
+    software_by_target = {target["target"]: compatible_software_packages_for_target(target) for target in targets}
+    profiles_by_target = {target["target"]: compatible_software_profiles_for_target(target) for target in targets}
+    install_presets_by_target: dict[str, list[dict]] = {}
+    for target in targets:
+        target_id = target["target"]
+        os_family = os_family_for_boot_target(target_id)
+        template_family = "ubuntu" if os_family == "linux" else os_family
+        if template_family:
+            install_presets_by_target[target_id] = [
+                preset
+                for preset in list_install_presets(os_family=template_family)
+                if preset.get("boot_target") == target_id and preset.get("assignable")
+            ]
+        else:
+            install_presets_by_target[target_id] = []
+    first_software_target = next((target for target in targets if software_by_target.get(target["target"])), None)
+    os_families = sorted({os_family_for_boot_target(target["target"]) for target in targets if os_family_for_boot_target(target["target"])})
+    return {
+        "schema_version": "synaboot.assignment-options.v1",
+        "session": sessions[0],
+        "sessions": sessions,
+        "boot_targets": targets,
+        "compatible_software_packages": software_by_target.get(first_software_target["target"], []) if first_software_target else [],
+        "compatible_software_by_target": software_by_target,
+        "compatible_software_profiles_by_target": profiles_by_target,
+        "install_presets_by_target": install_presets_by_target,
+        "install_presets": [
+            preset
+            for presets in install_presets_by_target.values()
+            for preset in presets
+        ],
+        "compatible_software_variants": [
+            variant
+            for packages in software_by_target.values()
+            for package in packages
+            for variant in package.get("variants", [])
+        ],
+        "software_profiles": list_software_profiles(),
+        "software_market_status": "ready",
+        "software_market_policy": {
+            "artifact_hosting_allowed": False,
+            "third_party_binary_stored": False,
+            "client_downloads_from_official_source": True,
+            "allowed_source_policies": sorted(ALLOWED_SOFTWARE_SOURCE_POLICIES),
+            "assignable_review_statuses": sorted(ASSIGNABLE_SOFTWARE_REVIEW_STATUSES),
+            "supported_os_families": os_families,
+        },
+        "conflicts": [],
+        "notes": [
+            "软件市场只保存官方来源、安装模板和校验策略，不托管第三方安装包。",
+            "未通过审核或缺少校验策略的软件只展示，不会进入自动安装任务。",
+            "安装任务预设只保存系统和软件组合；不包含清盘、格式化或磁盘设置。",
+        ],
+    }
+
+
+def assign_client_session(session_id: str, target: str) -> dict | None:
+    targets = {item["target"]: item for item in boot_target_catalog()}
+    if target not in targets:
+        raise ValueError("invalid_or_unready_target")
+    conn = connect_db()
+    row = conn.execute("SELECT * FROM client_sessions WHERE session_id = ?", (session_id,)).fetchone()
+    if row is None:
+        conn.close()
+        return None
+    now = int(time.time())
+    conn.execute(
+        """
+        UPDATE client_sessions
+        SET selected_target = ?, selected_label = ?, state = 'assignment_received',
+            last_seen_at = ?, expires_at = ?
+        WHERE session_id = ?
+        """,
+        (target, targets[target]["label"], now, now + 900, session_id),
+    )
+    conn.commit()
+    updated = conn.execute("SELECT * FROM client_sessions WHERE session_id = ?", (session_id,)).fetchone()
+    conn.close()
+    return client_session_payload(updated)
+
+
+def create_deployment_assignment(payload: dict) -> dict | None:
+    raw_session_ids = payload.get("session_ids")
+    if raw_session_ids is None:
+        raw_session_ids = [payload.get("session_id", "")]
+    if not isinstance(raw_session_ids, list):
+        raise ValueError("session_ids_required")
+    session_ids = list(dict.fromkeys(str(item).strip() for item in raw_session_ids if str(item).strip()))
+    session_id = session_ids[0] if session_ids else ""
+    boot_target = str(payload.get("boot_target") or payload.get("target") or "").strip()
+    if not session_ids:
+        raise ValueError("session_ids_required")
+    if not boot_target:
+        raise ValueError("boot_target_required")
+    targets = {item["target"]: item for item in boot_target_catalog()}
+    if boot_target not in targets:
+        raise ValueError("invalid_or_unready_target")
+    software_profile_ids = payload.get("software_profile_ids", [])
+    software_package_ids = payload.get("software_package_ids", [])
+    software_variant_ids = payload.get("software_variant_ids", [])
+    install_preset_id = str(payload.get("install_preset_id", "") or "").strip()
+    if not isinstance(software_profile_ids, list) or not isinstance(software_variant_ids, list) or not isinstance(software_package_ids, list):
+        raise ValueError("invalid_software_selection")
+    install_preset = get_install_preset(install_preset_id) if install_preset_id else None
+    if install_preset_id and not install_preset:
+        raise ValueError("install_preset_not_found")
+    if install_preset:
+        if not install_preset.get("assignable"):
+            raise ValueError("install_preset_not_assignable")
+        if install_preset.get("boot_target") != boot_target:
+            raise ValueError("install_preset_target_mismatch")
+        software_package_ids = list(dict.fromkeys([*install_preset.get("software_package_ids", []), *software_package_ids]))
+        software_profile_ids = list(dict.fromkeys([*install_preset.get("software_profile_ids", []), *software_profile_ids]))
+    if (software_variant_ids or software_profile_ids or software_package_ids) and not software_assignment_supported_for_target(targets[boot_target]):
+        raise ValueError(f"postinstall_injection_not_ready:{targets[boot_target]['kind']}")
+    software_package_ids = [str(item) for item in software_package_ids]
+    software_profile_ids = [str(item) for item in software_profile_ids]
+    software_variant_ids = [str(item) for item in software_variant_ids]
+    if os_family_for_boot_target(boot_target) == "windows" and software_assignment_supported_for_target(targets[boot_target]):
+        software_package_ids = list(dict.fromkeys([*software_package_ids, *DEFAULT_WINDOWS_SOFTWARE_PACKAGE_IDS]))
+    resolved_software_plan = resolve_software_plan(software_variant_ids, boot_target, software_profile_ids, software_package_ids)
+    task_sequence_plan = build_task_sequence_plan(boot_target, install_preset, resolved_software_plan)
+
+    now = int(time.time())
+    assignment_id = uuid.uuid4().hex[:16]
+    row = {
+        "id": assignment_id,
+        "session_id": session_id,
+        "session_ids": json.dumps(session_ids, ensure_ascii=False),
+        "source_image_id": str(payload.get("source_image_id", "")),
+        "boot_target": boot_target,
+        "boot_label": targets[boot_target]["label"],
+        "software_package_ids": json.dumps(software_package_ids, ensure_ascii=False),
+        "software_profile_ids": json.dumps(software_profile_ids, ensure_ascii=False),
+        "software_variant_ids": json.dumps(software_variant_ids, ensure_ascii=False),
+        "resolved_software_plan": json.dumps(resolved_software_plan, ensure_ascii=False),
+        "install_preset_id": install_preset_id,
+        "task_sequence_plan": json.dumps(task_sequence_plan, ensure_ascii=False),
+        "status": "assignment_received",
+        "created_by": "admin",
+        "created_at": now,
+        "updated_at": now,
+        "expires_at": now + 900,
+    }
+    conn = connect_db()
+    placeholders = ",".join("?" for _ in session_ids)
+    existing_rows = conn.execute(
+        f"SELECT * FROM client_sessions WHERE session_id IN ({placeholders})",
+        session_ids,
+    ).fetchall()
+    if len(existing_rows) != len(session_ids):
+        conn.close()
+        return None
+    try:
+        conn.execute("BEGIN")
+        for item in session_ids:
+            conn.execute(
+                """
+                UPDATE client_sessions
+                SET selected_target = ?, selected_label = ?, state = 'assignment_received',
+                    last_seen_at = ?, expires_at = ?
+                WHERE session_id = ?
+                """,
+                (boot_target, targets[boot_target]["label"], now, now + 900, item),
+            )
+        conn.execute(
+            """
+            INSERT INTO deployment_assignments (
+                id, session_id, session_ids, source_image_id, boot_target, boot_label,
+                software_package_ids, software_profile_ids, software_variant_ids, resolved_software_plan,
+                install_preset_id, task_sequence_plan, status, created_by,
+                created_at, updated_at, expires_at
+            )
+            VALUES (
+                :id, :session_id, :session_ids, :source_image_id, :boot_target, :boot_label,
+                :software_package_ids, :software_profile_ids, :software_variant_ids, :resolved_software_plan,
+                :install_preset_id, :task_sequence_plan, :status, :created_by,
+                :created_at, :updated_at, :expires_at
+            )
+            """,
+            row,
+        )
+        updated_rows = conn.execute(
+            f"SELECT * FROM client_sessions WHERE session_id IN ({placeholders})",
+            session_ids,
+        ).fetchall()
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        conn.close()
+        raise
+    conn.close()
+    sessions_by_id = {item["session_id"]: client_session_payload(item) for item in updated_rows}
+    sessions = [sessions_by_id[item] for item in session_ids]
+    session = sessions[0]
+    return {
+        **row,
+        "session_ids": session_ids,
+        "software_package_ids": software_package_ids,
+        "software_profile_ids": software_profile_ids,
+        "software_variant_ids": software_variant_ids,
+        "resolved_software_plan": resolved_software_plan,
+        "install_preset_id": install_preset_id,
+        "task_sequence_plan": task_sequence_plan,
+        "session": session,
+        "sessions": sessions,
+    }
 
 
 def list_jobs() -> list[dict]:
@@ -4218,6 +8117,32 @@ def boot_entry_status() -> dict:
 
 
 class Handler(BaseHTTPRequestHandler):
+    def redacted_request_text(self, value: str) -> str:
+        value = re.sub(r"([?&]token=)[^&\s]+", r"\1<redacted>", value)
+        value = re.sub(r"([?&]session_token=)[^&\s]+", r"\1<redacted>", value)
+        value = re.sub(
+            r"(/api/postinstall/assignments/[^/\s]+/nocloud/[^/\s]+/)[^/\s]+/",
+            r"\1<redacted>/",
+            value,
+        )
+        return value
+
+    def log_request(self, code: int | str = "-", size: int | str = "-") -> None:
+        sys.stderr.write(
+            "%s - - [%s] \"%s\" %s %s\n"
+            % (self.client_address[0], self.log_date_time_string(), self.redacted_request_text(self.requestline), str(code), str(size))
+        )
+
+    def log_message(self, format: str, *args: object) -> None:
+        message = self.redacted_request_text(format % args)
+        sys.stderr.write("%s - - [%s] %s\n" % (self.client_address[0], self.log_date_time_string(), message))
+
+    def has_admin_header(self) -> bool:
+        if not ADMIN_TOKEN:
+            return False
+        provided = self.headers.get("X-SynaBoot-Admin-Token", "")
+        return token_matches(provided, ADMIN_TOKEN)
+
     def require_admin(self) -> bool:
         client = self.client_address[0]
         now = time.time()
@@ -4239,8 +8164,192 @@ class Handler(BaseHTTPRequestHandler):
         path = urlparse(self.path).path
         if path == "/api/health":
             json_response(self, 200, {"status": "ok", "server_ip": SERVER_IP, "admin_configured": bool(ADMIN_TOKEN)})
+        elif path == "/api/admin/session":
+            if not ADMIN_TOKEN:
+                json_response(self, 200, admin_session_payload(False))
+            elif self.has_admin_header():
+                json_response(self, 200, admin_session_payload(True))
+            else:
+                json_response(self, 403, {"error": "invalid_admin_token", **admin_session_payload(False)})
+        elif path == "/api/ipxe/register":
+            text_response(self, 200, passive_register_script(self))
+        elif path == "/api/ipxe/wait":
+            text_response(self, 200, passive_wait_response(self))
+        elif path == "/api/client-sessions":
+            json_response(self, 200, list_client_sessions(include_private=self.has_admin_header()))
+        elif path == "/api/assignment-options":
+            if not self.has_admin_header():
+                json_response(self, 403, {"error": "invalid_admin_token" if ADMIN_TOKEN else "admin_actions_disabled"})
+                return
+            query = parse_qs(urlparse(self.path).query)
+            session_id = query_value(query, "session_id")
+            session_ids_value = query_value(query, "session_ids")
+            session_ids = [item.strip() for item in session_ids_value.split(",") if item.strip()] if session_ids_value else [session_id]
+            options = assignment_options(session_ids)
+            if options is None:
+                json_response(self, 404, {"error": "client_session_not_found"})
+            else:
+                json_response(self, 200, options)
+        elif path == "/api/software-packages":
+            query = parse_qs(urlparse(self.path).query)
+            os_family = query_value(query, "os_family") or None
+            include_blocked = query_value(query, "include_blocked") != "false"
+            json_response(
+                self,
+                200,
+                {
+                    "schema_version": "synaboot.software-packages.v1",
+                    "policy": {
+                        "artifact_hosting_allowed": False,
+                        "third_party_binary_stored": False,
+                        "client_downloads_from_official_source": True,
+                    },
+                    "packages": list_software_packages(os_family=os_family, include_blocked=include_blocked),
+                },
+            )
+        elif path.startswith("/api/software-packages/"):
+            package_id = path.rstrip("/").rsplit("/", 1)[-1]
+            package = get_software_package(package_id)
+            if package is None:
+                json_response(self, 404, {"error": "software_package_not_found"})
+            else:
+                json_response(self, 200, package)
+        elif path == "/api/software-variants":
+            query = parse_qs(urlparse(self.path).query)
+            os_family = query_value(query, "os_family") or None
+            include_blocked = query_value(query, "include_blocked") != "false"
+            json_response(
+                self,
+                200,
+                {
+                    "schema_version": "synaboot.software-variants.v1",
+                    "variants": list_software_variants(os_family=os_family, include_blocked=include_blocked),
+                },
+            )
+        elif path == "/api/software-profiles":
+            query = parse_qs(urlparse(self.path).query)
+            os_family = query_value(query, "os_family") or None
+            json_response(
+                self,
+                200,
+                {
+                    "schema_version": "synaboot.software-profiles.v1",
+                    "policy": {
+                        "artifact_hosting_allowed": False,
+                        "third_party_binary_stored": False,
+                        "profile_groups_assignable_variants_only": True,
+                    },
+                    "profiles": list_software_profiles(os_family=os_family),
+                },
+            )
+        elif path == "/api/install-presets":
+            query = parse_qs(urlparse(self.path).query)
+            os_family = query_value(query, "os_family") or None
+            json_response(
+                self,
+                200,
+                {
+                    "schema_version": "synaboot.install-presets.v1",
+                    "policy": {
+                        "disk_configuration_enabled": False,
+                        "software_source": "official_download_or_repo_only",
+                    },
+                    "presets": list_install_presets(os_family=os_family),
+                },
+            )
+        elif path.startswith("/api/install-presets/"):
+            preset_id = path.rstrip("/").rsplit("/", 1)[-1]
+            preset = get_install_preset(preset_id)
+            if preset is None:
+                json_response(self, 404, {"error": "install_preset_not_found"})
+            else:
+                json_response(self, 200, preset)
+        elif path.startswith("/api/software-variants/"):
+            variant_id = path.rstrip("/").rsplit("/", 1)[-1]
+            variant = get_software_variant(variant_id)
+            if variant is None:
+                json_response(self, 404, {"error": "software_variant_not_found"})
+            else:
+                json_response(self, 200, variant)
+        elif path == "/api/deployment-assignments":
+            if not self.has_admin_header():
+                json_response(self, 403, {"error": "invalid_admin_token" if ADMIN_TOKEN else "admin_actions_disabled"})
+                return
+            json_response(self, 200, {"schema_version": "synaboot.deployment-assignments.v1", "assignments": list_deployment_assignments()})
+        elif path.startswith("/api/deployment-assignments/"):
+            if not self.has_admin_header():
+                json_response(self, 403, {"error": "invalid_admin_token" if ADMIN_TOKEN else "admin_actions_disabled"})
+                return
+            assignment_id = path.rstrip("/").rsplit("/", 1)[-1]
+            assignment = get_deployment_assignment(assignment_id)
+            if assignment is None:
+                json_response(self, 404, {"error": "deployment_assignment_not_found"})
+            else:
+                json_response(self, 200, assignment)
+        elif path.startswith("/api/postinstall/assignments/") and "/nocloud/" in path:
+            parts = path.strip("/").split("/")
+            if len(parts) != 8:
+                json_response(self, 404, {"error": "not_found"})
+                return
+            assignment_id = parts[3]
+            session_id = parts[5]
+            token = parts[6]
+            seed_file = parts[7]
+            try:
+                assignment, session = verify_postinstall_access(assignment_id, session_id, token)
+            except ValueError as exc:
+                json_response(self, 403 if str(exc) == "invalid_session_token" else 404, {"error": str(exc)})
+                return
+            if seed_file == "meta-data":
+                text_response(self, 200, ubuntu_nocloud_meta_data(assignment, session), content_type="text/plain; charset=utf-8")
+            elif seed_file == "user-data":
+                try:
+                    text_response(self, 200, ubuntu_nocloud_user_data(assignment, session, token), content_type="text/cloud-config; charset=utf-8")
+                except ValueError as exc:
+                    json_response(self, 400, {"error": str(exc)})
+            else:
+                json_response(self, 404, {"error": "not_found"})
+        elif path.startswith("/api/postinstall/assignments/"):
+            parts = path.strip("/").split("/")
+            if len(parts) != 5:
+                json_response(self, 404, {"error": "not_found"})
+                return
+            assignment_id = parts[3]
+            action = parts[4]
+            query = parse_qs(urlparse(self.path).query)
+            session_id = query_value(query, "session_id")
+            token = query_value(query, "token")
+            try:
+                assignment, session = verify_postinstall_access(assignment_id, session_id, token)
+            except ValueError as exc:
+                json_response(self, 403 if str(exc) == "invalid_session_token" else 404, {"error": str(exc)})
+                return
+            if action == "plan":
+                json_response(self, 200, postinstall_plan_payload(assignment, session))
+            elif action == "runner.sh":
+                try:
+                    text_response(self, 200, ubuntu_postinstall_runner(assignment, session, token), content_type="text/x-shellscript; charset=utf-8")
+                except ValueError as exc:
+                    json_response(self, 400, {"error": str(exc)})
+            elif action == "runner.ps1":
+                try:
+                    text_response(self, 200, windows_postinstall_runner(assignment, session, token), content_type="text/plain; charset=utf-8")
+                except ValueError as exc:
+                    json_response(self, 400, {"error": str(exc)})
+            elif action == "setupcomplete.cmd":
+                try:
+                    text_response(self, 200, windows_setupcomplete_cmd(assignment, session, token), content_type="text/plain; charset=utf-8")
+                except ValueError as exc:
+                    json_response(self, 400, {"error": str(exc)})
+            elif action == "windows-hotpe-inject.ps1":
+                try:
+                    text_response(self, 200, windows_hotpe_injection_helper_ps1(assignment, session, token), content_type="text/plain; charset=utf-8")
+                except ValueError as exc:
+                    json_response(self, 400, {"error": str(exc)})
+            else:
+                json_response(self, 404, {"error": "not_found"})
         elif path == "/api/images":
-            json_response(self, 200, {"images": list_images()})
+            json_response(self, 200, images_inventory_payload(list_images()))
         elif path.startswith("/api/images/"):
             image_id = path.rstrip("/").rsplit("/", 1)[-1]
             image = get_image(image_id)
@@ -4289,7 +8398,162 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self) -> None:
         path = urlparse(self.path).path
+        if path.startswith("/api/postinstall/assignments/") and path.endswith("/events"):
+            parts = path.strip("/").split("/")
+            if len(parts) != 5:
+                json_response(self, 404, {"error": "not_found"})
+                return
+            payload = self.read_json_payload()
+            if payload is None:
+                return
+            try:
+                event = record_postinstall_event(parts[3], payload)
+            except ValueError as exc:
+                json_response(self, 403 if str(exc) == "invalid_session_token" else 400, {"error": str(exc)})
+                return
+            json_response(self, 201, event)
+            return
         if not self.require_admin():
+            return
+        if path == "/api/deployment-assignments":
+            payload = self.read_json_payload()
+            if payload is None:
+                return
+            try:
+                assignment = create_deployment_assignment(payload)
+            except ValueError as exc:
+                json_response(self, 400, {"error": str(exc)})
+                return
+            if assignment is None:
+                json_response(self, 404, {"error": "client_session_not_found"})
+            else:
+                json_response(self, 201, assignment)
+            return
+        if path == "/api/software-packages":
+            payload = self.read_json_payload()
+            if payload is None:
+                return
+            try:
+                package = create_software_package(payload)
+            except ValueError as exc:
+                json_response(self, 400, {"error": str(exc)})
+                return
+            json_response(self, 201, package)
+            return
+        if path == "/api/install-presets":
+            payload = self.read_json_payload()
+            if payload is None:
+                return
+            try:
+                preset = create_install_preset(payload)
+            except ValueError as exc:
+                json_response(self, 400, {"error": str(exc)})
+                return
+            json_response(self, 201, preset)
+            return
+        if path.startswith("/api/install-presets/") and (path.endswith("/archive") or path.endswith("/restore")):
+            parts = path.strip("/").split("/")
+            if len(parts) != 4:
+                json_response(self, 404, {"error": "not_found"})
+                return
+            status = "archived" if parts[3] == "archive" else "available"
+            try:
+                preset = update_install_preset_status(parts[2], status)
+            except ValueError as exc:
+                json_response(self, 400, {"error": str(exc)})
+                return
+            if preset is None:
+                json_response(self, 404, {"error": "install_preset_not_found"})
+            else:
+                json_response(self, 200, preset)
+            return
+        if path.startswith("/api/software-packages/") and (path.endswith("/archive") or path.endswith("/restore")):
+            parts = path.strip("/").split("/")
+            if len(parts) != 4:
+                json_response(self, 404, {"error": "not_found"})
+                return
+            status = "archived" if parts[3] == "archive" else "available"
+            try:
+                package = update_software_package_status(parts[2], status)
+            except ValueError as exc:
+                json_response(self, 400, {"error": str(exc)})
+                return
+            if package is None:
+                json_response(self, 404, {"error": "software_package_not_found"})
+            else:
+                json_response(self, 200, package)
+            return
+        if path.startswith("/api/software-packages/") and path.endswith("/variants"):
+            parts = path.strip("/").split("/")
+            if len(parts) != 4:
+                json_response(self, 404, {"error": "not_found"})
+                return
+            payload = self.read_json_payload()
+            if payload is None:
+                return
+            try:
+                variant = create_software_variant(parts[2], payload)
+            except ValueError as exc:
+                json_response(self, 400, {"error": str(exc)})
+                return
+            json_response(self, 201, variant)
+            return
+        if path == "/api/software-profiles":
+            payload = self.read_json_payload()
+            if payload is None:
+                return
+            try:
+                profile = create_software_profile(payload)
+            except ValueError as exc:
+                json_response(self, 400, {"error": str(exc)})
+                return
+            json_response(self, 201, profile)
+            return
+        if path.startswith("/api/software-profiles/") and (path.endswith("/archive") or path.endswith("/restore")):
+            parts = path.strip("/").split("/")
+            if len(parts) != 4:
+                json_response(self, 404, {"error": "not_found"})
+                return
+            status = "archived" if parts[3] == "archive" else "available"
+            try:
+                profile = update_software_profile_status(parts[2], status)
+            except ValueError as exc:
+                json_response(self, 400, {"error": str(exc)})
+                return
+            if profile is None:
+                json_response(self, 404, {"error": "software_profile_not_found"})
+            else:
+                json_response(self, 200, profile)
+            return
+        if path.startswith("/api/software-variants/") and path.endswith("/review"):
+            variant_id = path.split("/")[-2]
+            payload = self.read_json_payload()
+            if payload is None:
+                return
+            try:
+                variant = update_software_variant(variant_id, payload)
+            except ValueError as exc:
+                json_response(self, 400, {"error": str(exc)})
+                return
+            if variant is None:
+                json_response(self, 404, {"error": "software_variant_not_found"})
+            else:
+                json_response(self, 200, variant)
+            return
+        if path.startswith("/api/client-sessions/") and path.endswith("/assign"):
+            session_id = path.split("/")[-2]
+            payload = self.read_json_payload()
+            if payload is None:
+                return
+            try:
+                session = assign_client_session(session_id, str(payload.get("target", "")))
+            except ValueError as exc:
+                json_response(self, 400, {"error": str(exc)})
+                return
+            if session is None:
+                json_response(self, 404, {"error": "client_session_not_found"})
+            else:
+                json_response(self, 200, session)
             return
         if path == "/api/scan":
             images = scan_images()
@@ -4394,9 +8658,6 @@ class Handler(BaseHTTPRequestHandler):
             json_response(self, 400, {"error": "invalid_json_object"})
             return None
         return payload
-
-    def log_message(self, fmt: str, *args: object) -> None:
-        print(f"{self.address_string()} - {fmt % args}", flush=True)
 
 
 def main() -> None:

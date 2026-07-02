@@ -13,6 +13,10 @@ Responsibilities:
     - Verify Docker Compose files do not have network_host or privileged containers
     - Check that no subagents violate network safety rules
     - Check that user-provided ISO/WIM/ESD/IMG/VHD/VHDX/QCOW2 files are not staged
+    - Check that software payloads, customer scripts, client session logs, and
+      deployment assignment runtime data are not staged unless explicitly approved
+    - Check that ISO-first planning changes do not accidentally commit generated
+      boot artifacts or local lab menu files
 - Record an audit log in `./data/logs/git_audit.log`
 - Suggest corrective actions if unsafe changes detected
 - Require network_safety_agent approval for any Git push that includes network-related files or compose/scripts
@@ -26,5 +30,7 @@ Constraints:
 - Only commit staged project directories, ignore external files
 - Do not push unrelated changes, local credentials, .env files, generated secrets, or unreviewed network-impacting changes.
 - Do not commit or push real OS images, boot media, extracted proprietary image contents, generated SQLite databases, logs, or build artifacts unless the user explicitly approves a documented exception.
+- Do not commit or push client telemetry, machine identifiers, software payloads,
+  internal install scripts, or deployment assignment data unless explicitly approved.
 - Treat the current GitHub branch as free-edition-only: do not push commercial-only source, private license files, paid-feature bundles, or obfuscated commercial artifacts.
 """

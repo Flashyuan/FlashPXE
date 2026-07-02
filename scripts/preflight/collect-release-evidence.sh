@@ -50,6 +50,7 @@ bash scripts/preflight/check-private-commercial-scope.sh
 bash scripts/preflight/check-edition-boundary.sh
 bash scripts/preflight/check-public-runtime-boundary.sh
 bash scripts/preflight/check-autoinstall-boundary.sh
+bash scripts/preflight/check-software-assignment-flow.sh
 bash scripts/preflight/check-subagent-governance.sh
 bash scripts/preflight/check-iso-extractor-safety.sh
 bash scripts/preflight/check-loader-import-safety.sh

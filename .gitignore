@@ -18,6 +18,8 @@ data/logs/*
 !data/logs/.gitkeep
 data/builds/*
 !data/builds/.gitkeep
+data/secrets/*
+!data/secrets/.gitkeep
 
 # 管理员导入的 iPXE loader 和本地来源记录属于运行数据，不进入 Git。
 data/boot/loaders/*

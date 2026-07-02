@@ -88,75 +88,12 @@ find data/images/linux/ubuntu-24.04/casper -maxdepth 1 -type f -name '*.squashfs
 cat > data/boot/menu-lab.ipxe <<EOF
 #!ipxe
 
-set server-ip ${LAB_IP}
-set base-url http://\${server-ip}:${HTTP_PORT}
-set boot-url \${base-url}/boot
-set image-url \${base-url}/images
-isset \${platform} || set platform unknown
+echo FlashPXE lab menu follows the main deployment mode selector.
+chain --replace http://${LAB_IP}:${HTTP_PORT}/boot/menu.ipxe || goto failed
 
-:start
-console --x 1024 --y 768 || echo Console resize skipped
-console --picture \${boot-url}/flashpxe-logo.png || echo FlashPXE picture skipped
-colour --basic 0 --rgb 0x000000 0 || echo Colour command skipped
-colour --basic 6 --rgb 0x00aaaa 6 || echo Colour command skipped
-colour --basic 7 --rgb 0xffffff 7 || echo Colour command skipped
-colour --basic 1 --rgb 0x00aaaa 1 || echo Colour command skipped
-cpair --foreground 7 --background 0 0 || echo Colour pair skipped
-cpair --foreground 6 --background 0 1 || echo Colour pair skipped
-cpair --foreground 7 --background 1 2 || echo Colour pair skipped
-cpair --foreground 6 --background 0 3 || echo Colour pair skipped
-menu FlashPXE
-item --gap --                                      FlashPXE
-item --gap --                                A fast netboot console
-item --gap --          ${LAB_IP}    \${platform}    \${base-url}
-item --gap --          ----------------------------------------------------------------------------
-item --gap --          ISO Boot Menu
-item --gap --          SIZE      IMAGE
-item --key w windows_setup  5162MB   Windows 11 24H2 Pro Chinese x64
-item --key h hotpe          1058MB   HotPE V2.8
-item --key 1 linux_linux_ubuntu_22_04_3  4700MB   Ubuntu 22.04.3 desktop amd64
-item --key 2 linux_linux_ubuntu_24_04    5900MB   Ubuntu 24.04 desktop amd64
-choose --default windows_setup --timeout 15000 target && goto \${target} || goto start
-
-:windows_setup
-echo Loading Windows 11 installer...
-imgfree
-kernel \${image-url}/pe/hotpe/wimboot
-initrd -n BCD \${image-url}/windows/win11/boot/BCD BCD
-initrd -n boot.sdi \${image-url}/windows/win11/boot/boot.sdi boot.sdi
-initrd -n boot.wim \${image-url}/windows/win11/boot/boot.wim boot.wim
-boot || goto boot_failed
-
-:hotpe
-echo Loading HotPE recovery environment...
-imgfree
-kernel \${image-url}/pe/hotpe/wimboot pause
-initrd -n bootmgfw.efi \${image-url}/windows/win11/boot/bootx64.efi bootmgfw.efi
-initrd -n BCD \${image-url}/windows/win11/boot/BCD BCD
-initrd -n boot.sdi \${image-url}/windows/win11/boot/boot.sdi boot.sdi
-initrd -n boot.wim \${image-url}/pe/hotpe/boot.wim boot.wim
-boot || goto boot_failed
-
-:linux_linux_ubuntu_22_04_3
-echo Loading Ubuntu 22.04.3 NFS livefs...
-echo NFS source: ${NFS_IP}:/ubuntu-22.04.3
-echo This mode mounts casper/filesystem.squashfs from the read-only NFS export.
-kernel \${base-url}/images/linux/ubuntu-22.04.3/casper/vmlinuz ip=dhcp boot=casper netboot=nfs nfsroot=${NFS_IP}:/ubuntu-22.04.3 ---
-initrd \${base-url}/images/linux/ubuntu-22.04.3/casper/initrd
-boot || goto boot_failed
-
-:linux_linux_ubuntu_24_04
-echo Loading Ubuntu 24.04 NFS livefs...
-echo NFS source: ${NFS_IP}:/ubuntu-24.04
-echo This mode mounts casper/*.squashfs from the read-only NFS export.
-kernel \${base-url}/images/linux/ubuntu-24.04/casper/vmlinuz ip=dhcp boot=casper netboot=nfs nfsroot=${NFS_IP}:/ubuntu-24.04 ---
-initrd \${base-url}/images/linux/ubuntu-24.04/casper/initrd
-boot || goto boot_failed
-
-:boot_failed
-echo Boot failed. Press any key to return to FlashPXE.
-prompt
-goto start
+:failed
+echo Failed to load FlashPXE main menu.
+shell
 EOF
 chmod 0644 data/boot/menu-lab.ipxe
 

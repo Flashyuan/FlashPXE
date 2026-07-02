@@ -6,6 +6,7 @@
   "allowed_files": [
     ".codex/agents/architecture-agent.toml",
     ".codex/agents/git-audit-agent.toml",
+    ".codex/agents/image-factory-agent.toml",
     ".codex/agents/project-decision-agent.toml",
     ".codex/agents/security-audit-agent.toml",
     ".codex/agents/webui-agent.toml",
@@ -22,15 +23,19 @@
     "config/synaboot/editions.public.json",
     "config/synaboot/public-runtime.allowlist.json",
     "docs/ADMIN_GUIDE.md",
+    "docs/ADMIN_ISO_FIRST_DEPLOYMENT_PLAN.md",
+    "docs/BOOT_INSTALL_ISSUES_SUMMARY.md",
     "docs/EDITION_BOUNDARY_DECISION.md",
     "docs/FREE_RELEASE_CHECKLIST.md",
     "docs/PRIVATE_COMMERCIAL_FLOW.md",
+    "docs/SOFTWARE_MARKET_AND_ADMIN_ACTIONS_PLAN.md",
     "docs/SUBAGENT_SESSION_POOL.md",
     "scripts/bootstrap-synaboot.sh",
     "scripts/preflight/check-edition-boundary.sh",
     "scripts/preflight/check-private-commercial-scope.sh",
     "scripts/preflight/check-public-runtime-boundary.sh",
     "scripts/preflight/check-release-scope.sh",
+    "scripts/preflight/check-software-assignment-flow.sh",
     "scripts/preflight/collect-release-evidence.sh"
   ],
   "guardrails": [

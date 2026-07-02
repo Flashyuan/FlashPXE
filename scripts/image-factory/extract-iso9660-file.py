@@ -26,6 +26,7 @@ MAX_EXTRACT_BYTES = {
     "boot.sdi": 256 * 1024 * 1024,
     "boot.wim": 8 * 1024 * 1024 * 1024,
     "install_sources.yaml": 16 * 1024 * 1024,
+    "install-sources.yaml": 16 * 1024 * 1024,
     "casper-uuid": 16 * 1024 * 1024,
     "casper-uuid-generic": 16 * 1024 * 1024,
     "casper_uuid_generic": 16 * 1024 * 1024,
@@ -62,6 +63,38 @@ def normalize_iso_name(raw: bytes) -> str:
     return name.rstrip(".").lower()
 
 
+def normalize_rock_ridge_name(raw: bytes) -> str:
+    try:
+      name = raw.decode("utf-8")
+    except UnicodeDecodeError:
+        fail("Rock Ridge 文件名不是 UTF-8，当前安全提取器不处理该情况")
+    if not name or "/" in name or "\x00" in name:
+        fail("Rock Ridge 文件名包含非法字符")
+    allowed = set("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._+-")
+    if any(char not in allowed for char in name):
+        fail("Rock Ridge 文件名包含当前安全提取器未允许的字符")
+    return name.lower()
+
+
+def rock_ridge_name(record: bytes, name_len: int) -> str | None:
+    system_use_start = 33 + name_len
+    if name_len % 2 == 0:
+        system_use_start += 1
+    pos = system_use_start
+    while pos + 4 <= len(record):
+        signature = record[pos : pos + 2]
+        entry_len = record[pos + 2]
+        if entry_len < 4 or pos + entry_len > len(record):
+            break
+        if signature == b"NM" and entry_len >= 5:
+            flags = record[pos + 4]
+            if flags & 0x06:
+                return None
+            return normalize_rock_ridge_name(record[pos + 5 : pos + entry_len])
+        pos += entry_len
+    return None
+
+
 def parse_record(record: bytes) -> IsoRecord:
     if len(record) < 34:
         fail("ISO 目录记录过短")
@@ -70,8 +103,10 @@ def parse_record(record: bytes) -> IsoRecord:
     name_end = name_start + name_len
     if name_end > len(record):
         fail("ISO 目录记录文件名越界")
+    iso_name = normalize_iso_name(record[name_start:name_end])
+    name = rock_ridge_name(record, name_len) or iso_name
     return IsoRecord(
-        name=normalize_iso_name(record[name_start:name_end]),
+        name=name,
         extent=int.from_bytes(record[2:6], "little"),
         size=int.from_bytes(record[10:14], "little"),
         is_dir=bool(record[25] & 0x02),
@@ -190,6 +225,8 @@ def extract_file(iso: Path, wanted_path: str, output: Path, allowed_root: Path) 
         if max_size is None and target_name.endswith(".manifest"):
             max_size = 128 * 1024 * 1024
         if max_size is None and target_name.endswith(".size"):
+            max_size = 16 * 1024 * 1024
+        if max_size is None and target_name.endswith(".gpg"):
             max_size = 16 * 1024 * 1024
         if max_size is None:
             fail("当前提取器只允许提取项目白名单内的启动文件")

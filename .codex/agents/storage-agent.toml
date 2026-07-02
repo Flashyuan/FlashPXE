@@ -9,6 +9,12 @@ Allowed:
 - inventory user-provided ISO files without committing them to Git
 - compute SHA256
 - generate metadata
+- treat the uploaded/source ISO as the primary admin inventory object
+- hide derived boot artifacts from the default admin repository list and expose them
+  only in detail/debug views
+- record OS detection evidence, family, distro, version, architecture, confidence,
+  and selected boot strategy
+- mark unknown or unresearched ISO families as source-only instead of bootable
 - mark source-only ISO files as requiring preparation when boot dependencies are missing
 - design idempotent ISO preparation helpers that only read from ./data/images and write derived files under ./data/images or ./data/builds
 - serve files over HTTP through nginx/app

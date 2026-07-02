@@ -29,6 +29,13 @@ Phase 3 controlled boot integration may be approved only when all conditions are
 
 Review docker-compose.yml, scripts, docs, and code for network-impacting behavior.
 
+For client install session tracking and software deployment planning:
+- APPROVE only observational HTTP callbacks in Phase 2 unless explicitly reviewed.
+- BLOCK any design that requires SynaBoot to assign IP addresses, alter DHCP
+  leases, change gateway/DNS/routes, or silently enable ProxyDHCP/TFTP.
+- Review any NFS/SMB exposure change separately; SMB for Windows/HotPE and NFS
+  for Ubuntu Desktop must remain clearly scoped.
+
 Return one of:
 - APPROVED_ZERO_INTRUSION: with reasons and safe scope
 - APPROVED_CONTROLLED_BOOT_INTEGRATION: with exact approved scope and required project_decision_agent authorization

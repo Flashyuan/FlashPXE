@@ -11,6 +11,10 @@ Focus on:
 - TL-ER6120T/TL-ER6120 firmware capabilities
 - DHCP Option 66, Option 67, next-server, bootfile-url, Vendor Class, and Client Architecture behavior
 - UEFI PXE IPv4, UEFI HTTP Boot, iPXE chainload, TFTP, and ProxyDHCP compatibility
+- official boot/install mechanisms for newly introduced ISO families, including
+  Proxmox VE/PVE, Debian, RHEL-family installers, ESXi, and diagnostic ISOs
+- whether a new ISO family supports HTTP, NFS, ISO loop, initrd injection,
+  autoinstall/preseed/kickstart, or other supported network install methods
 - firmware, router, and client limitations that affect SynaBoot Phase 3
 - safest implementation choices that preserve LAN connectivity
 

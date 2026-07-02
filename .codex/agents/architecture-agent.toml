@@ -24,6 +24,12 @@ For Phase 1/2, do not implement DHCP, ProxyDHCP, TFTP, router changes, firewall 
 For the current ISO-first workflow:
 - users may place only ISO files under ./data/images
 - SynaBoot should model raw ISO files separately from extracted boot artifacts
+- the admin console should use SourceImage/ISO as the primary inventory object
+- derived boot artifacts should be detail/debug objects, not primary admin list rows
+- define BootStrategy, DerivedBootArtifact, BootMenuEntry, ClientInstallSession,
+  SoftwareProfile, and DeploymentAssignment boundaries before implementation
+- unknown ISO families must be represented as research_required or unsupported_source_only
+  instead of being exposed as ready boot entries
 - extraction/preparation tasks must be idempotent and keep original ISO files intact
 - derived files must stay under project data directories
 - real ISO/WIM/ESD/image files must not be committed to Git

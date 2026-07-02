@@ -127,6 +127,33 @@ ensure_ready_linux_artifacts() {
   [[ "$found_livefs" -eq 1 ]] || fail "缺少 livefs: ${casper_dir#$ROOT_DIR/}/*.squashfs"
 }
 
+create_casper_compat_aliases() {
+  local casper_dir="$1"
+  local source basename stem alias
+  if [[ -f "${casper_dir}/install_sources.yaml" && ! -e "${casper_dir}/install-sources.yaml" ]]; then
+    ln "${casper_dir}/install_sources.yaml" "${casper_dir}/install-sources.yaml"
+    chmod 0644 "${casper_dir}/install-sources.yaml"
+    info "casper_alias=${casper_dir#$ROOT_DIR/}/install-sources.yaml -> ${casper_dir#$ROOT_DIR/}/install_sources.yaml"
+  fi
+  shopt -s nullglob
+  for source in "${casper_dir}"/*.squashfs; do
+    ensure_regular_artifact "$source" "livefs alias source"
+    basename="$(basename "$source")"
+    [[ "$basename" == *_* ]] || continue
+    stem="${basename%.squashfs}"
+    alias="${casper_dir}/${stem//_/.}.squashfs"
+    [[ "$alias" != "$source" ]] || continue
+    if [[ -e "$alias" ]]; then
+      ensure_regular_artifact "$alias" "livefs alias"
+      continue
+    fi
+    ln "$source" "$alias"
+    chmod 0644 "$alias"
+    info "casper_alias=${alias#$ROOT_DIR/} -> ${source#$ROOT_DIR/}"
+  done
+  shopt -u nullglob
+}
+
 extract_from_iso() {
   local source="$1"
   local target_dir="$2"
@@ -147,10 +174,13 @@ extract_from_iso() {
     ".disk/info"
   )
   local livefs_paths=()
+  local companion_paths=()
   if [[ -f "$ROOT_DIR/scripts/image-factory/extract-iso9660-file.py" ]]; then
     while IFS=$'\t' read -r name kind _size; do
       if [[ "$kind" == "file" && "$name" == *.squashfs ]]; then
         livefs_paths+=("casper/$name")
+      elif [[ "$kind" == "file" && ( "$name" == *.manifest || "$name" == *.size || "$name" == *.gpg || "$name" == "install-sources.yaml" ) ]]; then
+        companion_paths+=("casper/$name")
       fi
     done < <(python3 "$ROOT_DIR/scripts/image-factory/extract-iso9660-file.py" --iso "$source" --list-dir casper)
   fi
@@ -168,7 +198,7 @@ extract_from_iso() {
         --output "$work/$iso_path" \
         --allowed-root "$work"
     done
-    for iso_path in "${optional_iso_paths[@]}"; do
+    for iso_path in "${optional_iso_paths[@]}" "${companion_paths[@]}"; do
       mkdir -p "$work/$(dirname "$iso_path")"
       python3 "$ROOT_DIR/scripts/image-factory/extract-iso9660-file.py" \
         --iso "$source" \
@@ -221,6 +251,13 @@ extract_from_iso() {
     livefs_target="$(canonical_child_path "$IMAGES_DIR" "${casper_dir}/${livefs_name}")" || fail "${livefs_name} 目标路径越界"
     install_missing_artifact "$work/$livefs_path" "$livefs_target" "$livefs_name"
   done
+  for companion_path in "${companion_paths[@]}"; do
+    local companion_name companion_target
+    [[ -f "$work/$companion_path" ]] || continue
+    companion_name="$(basename "$companion_path")"
+    companion_target="$(canonical_child_path "$IMAGES_DIR" "${casper_dir}/${companion_name}")" || fail "${companion_name} 目标路径越界"
+    install_missing_artifact "$work/$companion_path" "$companion_target" "$companion_name"
+  done
   [[ ! -f "$work/casper/filesystem.size" ]] || install_missing_artifact "$work/casper/filesystem.size" "$size_target" "filesystem.size"
   [[ ! -f "$work/casper/filesystem.manifest" ]] || install_missing_artifact "$work/casper/filesystem.manifest" "$manifest_target" "filesystem.manifest"
   [[ ! -f "$work/casper/install_sources.yaml" ]] || install_missing_artifact "$work/casper/install_sources.yaml" "$install_sources_target" "install_sources.yaml"
@@ -229,6 +266,7 @@ extract_from_iso() {
   [[ -f "$work/.disk/casper-uuid-generic" || ! -f "$work/.disk/casper_uuid_generic" ]] || install_missing_artifact "$work/.disk/casper_uuid_generic" "$uuid_generic_target" "casper-uuid-generic"
   [[ ! -f "$work/.disk/casper_uuid_generic" ]] || install_missing_artifact "$work/.disk/casper_uuid_generic" "$uuid_generic_legacy_target" "casper_uuid_generic"
   [[ ! -f "$work/.disk/info" ]] || install_missing_artifact "$work/.disk/info" "$disk_info_target" ".disk/info"
+  create_casper_compat_aliases "$casper_dir"
   ensure_ready_linux_artifacts "$casper_dir"
   chmod 0755 "$casper_dir" "$disk_dir"
   chmod 0644 "$vmlinuz_target" "$initrd_target"
@@ -271,6 +309,7 @@ main() {
     if [[ -e "${casper_dir}/vmlinuz" || -e "${casper_dir}/initrd" ]] \
       && compgen -G "${casper_dir}/*.squashfs" >/dev/null \
       && [[ -f "${target_dir}/.disk/casper-uuid-generic" ]]; then
+      create_casper_compat_aliases "$casper_dir"
       ensure_ready_linux_artifacts "$casper_dir"
       info "already_prepared=${target_dir#$ROOT_DIR/}"
       continue

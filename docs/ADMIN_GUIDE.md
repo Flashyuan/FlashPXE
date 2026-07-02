@@ -181,6 +181,50 @@ python3 scripts/image-factory/extract-hotpe-runtime-assets.py
 \\10.101.8.135\synaboot-images\pe\hotpe\runtime\HotProgMods
 ```
 
+HotPE 自动挂载 SMB 已提供实验资产生成器：HotPE 启动进入桌面后，可通过
+生成的脚本自动映射 SynaBoot 镜像仓库、Windows 镜像目录和 HotPE 外置模块
+目录。该能力只服务 Windows/HotPE，不改变 Ubuntu Desktop 的 NFS livefs
+方案，也不会要求停掉现有 SMB。
+
+生产环境可以使用主机 `SERVER_IP` 提供 SMB，例如：
+
+```text
+\\<SERVER_IP>\synaboot-images
+\\<SERVER_IP>\hotpe-mods
+\\<SERVER_IP>\win11
+```
+
+独立 SMB IP 不是协议要求，只是实验隔离更安全。若要在生产环境复用
+`SERVER_IP:445`，必须先确认端口未占用、共享只读、凭据不进入 Git 或公开
+HTTP 目录，并通过网络安全预检。
+
+实验环境生成命令：
+
+```bash
+SYNABOOT_HOTPE_SMB_HOST=10.101.8.135 \
+SYNABOOT_HOTPE_SMB_USER=synaboot \
+SYNABOOT_HOTPE_SMB_PASSWORD="<只读 SMB 密码>" \
+python3 scripts/image-factory/render-hotpe-automount-assets.py
+```
+
+生成器会把含密脚本写入 `data/secrets/hotpe/automount/`，该目录只用于受控
+实验注入 HotPE，不会发布到 HTTP 镜像仓库。公开目录
+`data/images/pe/hotpe/runtime/AutoMount/` 只保存无密文 manifest 和说明。
+
+验证命令：
+
+```bash
+bash scripts/preflight/check-hotpe-automount-safety.sh
+```
+
+通过后，HotPE 内部可使用 `mount-synaboot-shares.cmd` 映射：
+
+```text
+Z:  SynaBoot 镜像仓库
+M:  HotPE 外置功能模块
+W:  Windows 安装镜像目录
+```
+
 真实 ISO 放好后，可运行服务级 smoke test：
 
 ```bash
@@ -385,7 +429,9 @@ Web UI 打不开：
 Ubuntu 无法启动：
 
 - 确认同一目录下有 ISO、`casper/vmlinuz`、`casper/initrd`、至少一个 `casper/*.squashfs`。
-- SMB/CIFS livefs 模式需要只读共享能访问到该 Ubuntu 目录；HTTP fallback 会下载整 ISO，低内存机器可能失败。
+- Ubuntu Desktop 正式路径是 HTTP 加载 kernel/initrd，NFS 提供只读 casper livefs；
+  不再使用 SMB/CIFS livefs。
+- HTTP fallback 会下载整 ISO，低内存机器可能失败，只能临时排错。
 - 查看镜像详情中的 `preparation_status`、`missing_artifacts` 和 `next_action`。
 
 Windows 无法直接启动：

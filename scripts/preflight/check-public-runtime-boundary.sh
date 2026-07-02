@@ -110,8 +110,10 @@ def web_api_urls() -> set[str]:
 
 
 def normalize_api_path(value: str) -> str | None:
+    value = value.strip()
     if not value.startswith("/api/"):
         return None
+    value = value.split("?", 1)[0]
     return value.rstrip("/")
 
 
@@ -129,7 +131,12 @@ api_paths = sorted({
     for path in [normalize_api_path(value)]
     if path
 })
-web_paths = sorted(web_api_urls())
+web_paths = sorted({
+    path
+    for value in web_api_urls()
+    for path in [normalize_api_path(value)]
+    if path
+})
 
 blocked_hits = []
 for source, paths in (("api", api_paths), ("web", web_paths)):

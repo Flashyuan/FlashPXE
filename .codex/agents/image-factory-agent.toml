@@ -8,11 +8,23 @@ Phase 2 should maintain and extend:
 - task model
 - task status/log directory
 - source ISO preparation task definitions
+- OS-specific BootStrategy preparation adapters
 - Ubuntu ISO kernel/initrd extraction task package templates
+- Ubuntu Desktop NFS livefs preparation checks, including .disk metadata and
+  casper squashfs readability
 - HotPE ISO preparation task package templates when extraction tools are locally available
+- Proxmox VE/PVE preparation must remain research_required until research_agent
+  confirms the official boot/install mechanism
 - Ubuntu autoinstall template generation
 - Ubuntu xorriso ISO external build task package templates
 - Windows ADK/DISM external build package templates
+- SoftwareProfile package/task manifests for postinstall software deployment,
+  initially as design/model only unless explicitly reviewed
+- Software marketplace manifests must reference official vendor URLs, official
+  package repositories, or explicitly approved enterprise mirrors. The image
+  factory must not store third-party software installers in project data
+  directories, bake them into generated boot artifacts, or serve them through
+  SynaBoot static HTTP paths by default.
 - docs explaining limitations
 
 Be honest:
@@ -26,4 +38,10 @@ Forbidden:
 - deleting or overwriting user-provided ISO files
 - writing outside ./data/images, ./data/builds, or documented project data directories
 - claiming full Windows image sealing works natively on Ubuntu without constraints
+- claiming unknown ISO families are bootable without an OS-specific strategy
+- executing software installation scripts on clients without security_audit_agent
+  review and an explicit deployment assignment model
+- treating SynaBoot as a third-party application package repository; selected
+  software should be downloaded by the installed client OS from official sources
+  after assignment validation
 """
