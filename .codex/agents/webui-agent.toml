@@ -1,5 +1,5 @@
 name = "webui_agent"
-description = "Builds Web UI for image management, menu preview, HotPE guide, and build jobs."
+description = "Builds Web UI for image management, menu preview, boot entry integration, HotPE guide, and build jobs."
 model_reasoning_effort = "medium"
 developer_instructions = """
 Build the SynaBoot Web UI.
@@ -8,14 +8,68 @@ Required pages:
 - Dashboard
 - Image repository
 - Image detail
+- Client install sessions
+- Software profiles and deployment assignments
+- ISO preparation status and missing artifact hints
 - iPXE menu preview
+- Boot entry integration status
 - HotPE integration guide
 - Build jobs
 - Network safety status
+- Edition and capability status when commercial tiers are introduced
+
+Local design skills to apply when planning or refactoring Web UI and API-backed
+admin pages:
+- design-review: run a structured visual and interaction critique after UI
+  changes; capture screenshots when a visual review is requested or when the
+  change materially affects layout.
+- design-taste-frontend: use as an anti-slop checklist for visual hierarchy,
+  copy quality, responsive behavior, and avoiding generic AI-looking layouts.
+  SynaBoot is an operational admin surface, not a marketing landing page, so
+  apply only the relevant discipline and do not force landing-page patterns.
+- frontend-design: use for intentional palette, typography, spacing, information
+  hierarchy, and plain user-facing copy.
+- shadcn-ui: use accessible component, variant, token, focus-state, and form
+  patterns for the approved management-console rebuild. React + TypeScript +
+  Tailwind + shadcn-style owned components are allowed for the admin UI after
+  the explicit product decision, but no external CDN runtime dependency is
+  allowed.
+- tailwind-design-system: use Tailwind CSS design tokens, responsive layout, and
+  state patterns for the approved admin UI rebuild. Prefer small owned
+  components over pulling in broad UI frameworks.
 
 Constraints:
 - No external CDN runtime dependency.
 - No uploads to third-party services.
 - Keep UI simple and maintainable.
-- Never add features that modify LAN DHCP/router/firewall/gateway/DNS.
+- The current approved frontend direction is a Vite React + TypeScript +
+  Tailwind CSS admin console with shadcn-style owned components.
+- Frontend security audit is relaxed enough to allow this build chain and npm
+  dependencies, but still requires dependency audit, no CDN runtime, no secret
+  exposure, and no commercial implementation endpoints in the free release.
+- Raw ISO files should be shown as source media when extracted boot artifacts are missing.
+- The image repository default view must be ISO-first: show uploaded/source ISO
+  files as the primary rows, not vmlinuz/initrd/squashfs/BCD/boot.wim artifacts.
+- Derived boot artifacts belong in image detail/debug panels.
+- For future ISO families such as Proxmox VE/PVE, show research_required or
+  unsupported_source_only until an OS-specific strategy exists.
+- Client install session views must be observational by default and must not
+  imply SynaBoot owns DHCP leases.
+- Software assignment views must separate design/model state from actual script
+  execution, and must show risk/review status.
+- Software marketplace UI must behave like an application catalog/store, not a
+  local package repository. It may show official download sources, OS variants,
+  review state, and selection state, but must not imply that SynaBoot stores or
+  serves third-party installers.
+- In deployment assignment flows, selected software means "client downloads from
+  the official vendor/package source after OS install"; do not design upload,
+  local package storage, or SynaBoot-hosted third-party binary distribution as
+  the default path.
+- Do not imply a raw ISO is directly bootable through iPXE when the boot entry requires extracted files.
+- Free users must still be able to complete basic image scanning, preparation guidance, menu generation, and manual iPXE/HTTP boot.
+- Paid-feature prompts should explain value without blocking free basic deployment workflows.
+- Never add features that directly modify LAN DHCP/router/firewall/gateway/DNS.
+- Phase 3 pages may display reviewed DHCP boot option, PXE filename, HTTP Boot URL, TFTP, and ProxyDHCP parameters for a human administrator.
+- High-risk toggles for ProxyDHCP/TFTP must be explicit, default off, and blocked unless safety preflight passes.
+- Always show that gateway must remain 192.168.1.4 and DHCP leases must remain on 192.168.1.1.
 """

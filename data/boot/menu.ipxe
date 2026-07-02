@@ -1,0 +1,120 @@
+#!ipxe
+
+set server-ip 10.101.8.135
+set base-url http://${server-ip}:18080
+set boot-url ${base-url}/boot
+set image-url ${base-url}/images
+isset ${platform} || set platform unknown
+isset ${synaboot-postinstall-args} || set synaboot-postinstall-args
+
+:start
+console --x 1024 --y 768 || echo Console resize skipped
+console --picture ${boot-url}/flashpxe-logo.png || echo FlashPXE picture skipped
+colour --basic 0 --rgb 0x000000 0 || echo Colour command skipped
+colour --basic 6 --rgb 0x00aaaa 6 || echo Colour command skipped
+colour --basic 7 --rgb 0xffffff 7 || echo Colour command skipped
+colour --basic 1 --rgb 0x00aaaa 1 || echo Colour command skipped
+cpair --foreground 7 --background 0 0 || echo Colour pair skipped
+cpair --foreground 6 --background 0 1 || echo Colour pair skipped
+cpair --foreground 7 --background 1 2 || echo Colour pair skipped
+cpair --foreground 6 --background 0 3 || echo Colour pair skipped
+menu FlashPXE
+item --gap --                                      FlashPXE
+item --gap --                                A fast netboot console
+item --gap --          ${server-ip}    ${platform}    ${base-url}
+item --gap --          ----------------------------------------------------------------------------
+item --gap --          Deployment Mode
+item --key a manual_menu   (A) Active install: choose an image manually  [default]
+item --key p passive_wait  (P) Passive install: wait for admin assignment
+item --gap --          ----------------------------------------------------------------------------
+item --key s shell         (S) Open iPXE shell
+item --key r reboot        (R) Reboot client
+item --key o poweroff      (O) Power off client
+choose --default manual_menu --timeout 15000 target && goto ${target} || goto start
+
+:manual_menu
+menu FlashPXE
+item --gap --                                      FlashPXE
+item --gap --                                Active install menu
+item --gap --          ${server-ip}    ${platform}    ${base-url}
+item --gap --          ----------------------------------------------------------------------------
+item --gap --          ISO Boot Menu
+item --gap --          SIZE      IMAGE
+item --key w windows_setup  (W) Windows installer  [default]
+item --key h hotpe          (H) HotPE recovery environment
+item --key 1 linux_linux_ubuntu_22_04_3 (1) linux/ubuntu-22.04.3
+item --key 2 linux_linux_ubuntu_24_04 (2) linux/ubuntu-24.04
+item --gap --          ----------------------------------------------------------------------------
+item --gap --          Tools Menu
+item --key b start          (B) Back to deployment mode selector
+item --key s shell          (S) Open iPXE shell
+item --key r reboot         (R) Reboot client
+item --key p poweroff       (P) Power off client
+choose --default windows_setup --timeout 15000 target && goto ${target} || goto start
+
+:passive_wait
+echo Registering this client for admin-controlled deployment...
+chain --replace ${base-url}/api/ipxe/register?mac=${net0/mac}&uuid=${uuid}&serial=${serial}&asset=${asset}&manufacturer=${manufacturer}&product=${product}&platform=${platform}&buildarch=${buildarch}&ip=${net0/ip} || goto passive_failed
+
+:passive_failed
+echo Could not enter passive deployment mode.
+echo Press B to return, R to reboot, O to power off, or wait to retry.
+menu FlashPXE Passive install error
+item --key b start          (B) Back to deployment mode selector
+item --key r reboot         (R) Reboot client
+item --key o poweroff       (O) Power off client
+item retry                  Retry passive registration
+choose --default retry --timeout 5000 target && goto ${target} || goto retry
+:retry
+goto passive_wait
+
+:hotpe
+echo Loading HotPE...
+imgfree
+kernel ${image-url}/pe/hotpe/wimboot pause
+initrd -n bootmgfw.efi ${image-url}/pe/hotpe/bootx64.efi bootmgfw.efi
+initrd -n BCD ${image-url}/pe/hotpe/BCD BCD
+initrd -n boot.sdi ${image-url}/pe/hotpe/boot.sdi boot.sdi
+initrd -n boot.wim ${image-url}/pe/hotpe/boot.wim boot.wim
+boot || goto boot_failed
+
+:windows_setup
+echo Loading Windows installer...
+imgfree
+kernel ${image-url}/pe/hotpe/wimboot
+initrd -n BCD ${image-url}/windows/win11/boot/BCD BCD
+initrd -n boot.sdi ${image-url}/windows/win11/boot/boot.sdi boot.sdi
+initrd -n boot.wim ${image-url}/windows/win11/boot/boot.wim boot.wim
+boot || goto boot_failed
+
+:linux_linux_ubuntu_22_04_3
+echo Loading Ubuntu/Linux NFS livefs from linux/ubuntu-22.04.3...
+echo NFS source: 10.101.8.136:/ubuntu-22.04.3
+echo This mode mounts casper/*.squashfs from the read-only NFS export.
+kernel ${base-url}/images/linux/ubuntu-22.04.3/casper/vmlinuz ip=dhcp boot=casper netboot=nfs nfsroot=10.101.8.136:/ubuntu-22.04.3 ${synaboot-postinstall-args} --- quiet splash
+initrd ${base-url}/images/linux/ubuntu-22.04.3/casper/initrd
+boot || goto boot_failed
+
+:linux_linux_ubuntu_24_04
+echo Loading Ubuntu/Linux NFS livefs from linux/ubuntu-24.04...
+echo NFS source: 10.101.8.136:/ubuntu-24.04
+echo This mode mounts casper/*.squashfs from the read-only NFS export.
+kernel ${base-url}/images/linux/ubuntu-24.04/casper/vmlinuz ip=dhcp boot=casper netboot=nfs nfsroot=10.101.8.136:/ubuntu-24.04 nomodeset ${synaboot-postinstall-args} --- quiet splash
+initrd ${base-url}/images/linux/ubuntu-24.04/casper/initrd
+boot || goto boot_failed
+
+:shell
+shell
+goto start
+
+:reboot
+reboot
+
+:poweroff
+poweroff
+
+:boot_failed
+echo Boot failed. Check image readiness in the SynaBoot admin UI.
+echo Press any key to return to the deployment console.
+prompt
+goto start

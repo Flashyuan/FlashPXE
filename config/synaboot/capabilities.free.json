@@ -1,0 +1,54 @@
+{
+  "schema_version": "synaboot.capabilities.v1",
+  "edition": "free",
+  "release_channel": "free",
+  "owner_local_full_feature_allowed": true,
+  "github_public_release": true,
+  "commercial_code_included": false,
+  "online_activation_required": false,
+  "free_limits": {
+    "basic_image_count_limited": false,
+    "basic_menu_generation_limited": false,
+    "manual_ipxe_http_boot_limited": false,
+    "basic_autoinstall_profile_drafts_limited": false,
+    "offline_core_requires_license": false
+  },
+  "core_free_guarantees": [
+    "docker_compose_deploy",
+    "http_image_repository",
+    "local_iso_scan",
+    "hotpe_assisted_windows_install",
+    "ubuntu_linux_basic_boot_preparation",
+    "ipxe_http_menu_generation",
+    "manual_ipxe_usb_iso_efi_boot",
+    "manual_uefi_http_boot",
+    "basic_web_image_management",
+    "basic_autoinstall_profile_drafts",
+    "autoinstall_template_variable_allowlist",
+    "autoinstall_template_preview",
+    "network_safety_preflight",
+    "phase3_readonly_boot_entry_status"
+  ],
+  "paid_feature_placeholders": [
+    "multi_script_binding",
+    "advanced_variable_expansion_preview",
+    "default_autoinstall_policy",
+    "host_or_mac_based_autoinstall_policy",
+    "bulk_image_lifecycle_management",
+    "multi_admin_rbac",
+    "audit_reports",
+    "multi_node_management",
+    "enterprise_identity_integration",
+    "commercial_support"
+  ],
+  "blocked_from_public_release": [
+    "commercial_source_code",
+    "private_license_files",
+    "obfuscated_commercial_bundles",
+    "real_os_images",
+    "generated_databases",
+    "logs",
+    "build_artifacts",
+    "secrets"
+  ]
+}

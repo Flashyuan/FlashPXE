@@ -1,0 +1,32 @@
+name: synaboot-smb-lab
+
+services:
+  synaboot-smb-lab:
+    build:
+      context: ./scripts/lab/smb
+    container_name: synaboot-smb-lab
+    ports:
+      - "10.101.8.135:445:445/tcp"
+    environment:
+      SYNABOOT_SMB_PASSWORD: "${SYNABOOT_SMB_PASSWORD:-synaboot-lab}"
+    volumes:
+      - ./data/images:/srv/synaboot/images:ro
+    read_only: true
+    tmpfs:
+      - /tmp
+      - /run
+      - /var/cache/samba
+      - /var/lib/samba
+      - /var/log/samba
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_BIND_SERVICE
+      - CHOWN
+      - DAC_OVERRIDE
+      - FOWNER
+      - SETGID
+      - SETUID
+    restart: "no"

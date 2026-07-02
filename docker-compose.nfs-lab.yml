@@ -1,0 +1,39 @@
+name: synaboot-nfs-lab
+
+services:
+  synaboot-nfs-lab:
+    build:
+      context: ./scripts/lab/nfs
+    container_name: synaboot-nfs-lab
+    environment:
+      SYNABOOT_NFS_LAB_IP: "10.101.8.136"
+    networks:
+      synaboot-nfs-lab-lan:
+        ipv4_address: 10.101.8.136
+    volumes:
+      - ./data/images:/srv/synaboot/images:ro
+    read_only: true
+    tmpfs:
+      - /run
+      - /tmp
+      - /var/lib/nfs
+      - /var/log
+    cap_add:
+      # nfs-ganesha 的 VFS FSAL 需要通过文件句柄读取只读导出内容。
+      # 仅给实验 NFS 容器增加必要能力，仍不使用 privileged/host network。
+      - DAC_READ_SEARCH
+    security_opt:
+      - no-new-privileges:true
+      # Docker 默认 seccomp 会阻断 open_by_handle_at，导致客户端 mount 阶段 EPERM。
+      - seccomp=unconfined
+    restart: "no"
+
+networks:
+  synaboot-nfs-lab-lan:
+    driver: macvlan
+    driver_opts:
+      parent: ens19
+    ipam:
+      config:
+        - subnet: 10.101.8.0/24
+          gateway: 10.101.8.1
